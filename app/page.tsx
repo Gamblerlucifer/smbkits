@@ -520,7 +520,7 @@ export default function Home() {
           <p>Every layer operates with shared brand standards.</p>
         </div>
         <div className="service-list">
-          <a href="#access" className="service-item service-core">
+          <a href="/reputation-response" className="service-item service-core">
             <div>
               <span className="service-tag-inline">Core · Primary</span>
               <div className="service-name">Reputation Response</div>
@@ -533,14 +533,14 @@ export default function Home() {
             <span className="service-arrow">→</span>
           </a>
           {[
-            { name: "Social Presence", desc: "Maintain a consistent tone across every customer touchpoint — dining, bar, studio, or spa." },
-            { name: "Local Positioning", desc: "Understand what customers say about your closest competitors." },
-            { name: "Reputation Recovery", desc: "Encourage satisfied customers to share their experience naturally." },
-            { name: "Brand Voice Library", desc: "Descriptions that reflect your culinary or service vision — from wine list to treatment menu." },
-            { name: "Visibility Intelligence", desc: "Understand why customers choose competing premium businesses nearby." },
-            { name: "Brand Responses", desc: "The right words for every customer interaction, every time." },
+            { name: "Social Presence", href: "/social-presence", desc: "Maintain a consistent tone across every customer touchpoint — dining, bar, studio, or spa." },
+            { name: "Local Positioning", href: "/local-positioning", desc: "Understand what customers say about your closest competitors." },
+            { name: "Reputation Recovery", href: "/reputation-recovery", desc: "Encourage satisfied customers to share their experience naturally." },
+            { name: "Brand Voice Library", href: "/brand-voice", desc: "Descriptions that reflect your culinary or service vision — from wine list to treatment menu." },
+            { name: "Visibility Intelligence", href: "/visibility-intelligence", desc: "Understand why customers choose competing premium businesses nearby." },
+            { name: "Brand Responses", href: "/brand-responses", desc: "The right words for every customer interaction, every time." },
           ].map((item) => (
-            <a key={item.name} href="#access" className="service-item">
+            <a key={item.name} href={item.href} className="service-item">
               <div>
                 <div className="service-name">{item.name}</div>
                 <div className="service-desc">{item.desc}</div>
