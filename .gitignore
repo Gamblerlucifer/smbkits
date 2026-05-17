@@ -39,3 +39,11 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# scrapers
+scrapers/credentials.json
+scrapers/.env
+scrapers/__pycache__/
+scrapers/enrich.log
+scrapers/michelin_debug.py
+*.pyc
