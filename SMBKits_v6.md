@@ -267,6 +267,11 @@ Cold Outreach (Instantly.ai)
 
 ## Phase 2 — 콜드 이메일 파이프라인
 
+### Instantly.ai 글로벌 라우터 스크립트
+Supabase 리드의 `country` / `city` 코드 판별 → 국가별 로컬라이징 시퀀스로 자동 분기 적재
+- 예: JP 리드 → 일본어 시퀀스 캠페인 / US 리드 → 영어 시퀀스 캠페인
+- Phase 2 콜드 이메일 파이프라인 구축 시 설계
+
 ### 발송 준비
 - [ ] Gmail 발송 전용 계정 3개 생성
 - [ ] Mailgun 가입 (무료 5,000건/월)
@@ -414,6 +419,11 @@ Write a highly disciplined, professionally restrained draft response to the cust
   → brand_voices 초기값 자동 세팅
   → 대시보드 접근 권한 부여
 ```
+
+### 대시보드 핵심 레이아웃 (`app/dashboard/page.tsx`)
+- 좌측 사이드바: 7개 도구 멀티탭
+- 메인 화면: 지점별 평판 등급 + 미답변 리뷰 현황 한 화면에 통제
+- 멀티 테넌시: 오너 1명이 여러 지점 보유 시 단일 뷰로 관리
 
 ### 개발 순서 (Claude Code — 7개 동시 MVP)
 
