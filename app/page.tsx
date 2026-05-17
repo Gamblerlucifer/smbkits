@@ -196,6 +196,7 @@ export default function Home() {
           letter-spacing: 0.35em; text-transform: uppercase;
           color: var(--muted); margin-bottom: 2.5rem;
         }
+        .kicker-br { display: none; }
         .hero-philosophy {
           font-family: var(--font-display);
           font-size: clamp(0.95rem, 1.5vw, 1.1rem);
@@ -434,15 +435,53 @@ export default function Home() {
         @media (max-width: 768px) {
           nav { padding: 1rem 1.25rem; }
           .nav-cta { padding: 0.6rem 1rem; letter-spacing: 0.14em; }
-          .hero { padding-top: 8rem; padding-bottom: 6rem; }
-          .hero h1 { font-size: clamp(2.5rem, 12vw, 4rem); line-height: 1.06; }
-          .hero-sub { max-width: 92%; font-size: 0.98rem; line-height: 1.85; }
+
+          /* HERO */
+          .hero { padding-top: 7rem; padding-bottom: 5rem; }
+          .hero h1 { font-size: clamp(2.6rem, 11vw, 4rem); line-height: 1.05; letter-spacing: -0.02em; }
+          .hero-sub { max-width: 92%; font-size: 1rem; line-height: 1.85; }
           .hero-sub br { display: none; }
-          .service-item { grid-template-columns: 1fr; gap: 0.75rem; }
-          .service-arrow { display: none; }
+          .kicker { margin-bottom: 1.75rem; letter-spacing: 0.2em; }
+          .kicker-br { display: block; }
+          .rule { margin: 2rem auto; }
+
+          /* BUTTONS */
           .btn-primary, .btn-ghost, .email-submit { width: 100%; justify-content: center; }
-          .btn-ghost { margin-left: 0; margin-top: 1rem; display: block; }
+          .btn-ghost { margin-left: 0; margin-top: 0.75rem; display: block; }
+
+          /* STATEMENT */
+          .statement { padding: 5rem 1.5rem; }
+          .statement h2 { font-size: clamp(1.6rem, 7vw, 2.25rem); }
+          .statement h2 br { display: none; }
+
+          /* CORE TRIAGE TABLE */
+          .t-header { flex-direction: column; align-items: flex-start; gap: 0.4rem; }
+          .t-name { font-size: 0.95rem; }
+          .t-tag { align-self: flex-start; }
+          .t-desc { font-size: 0.95rem; }
+          .t-sub { font-size: 0.85rem; }
+          .core-right-label { letter-spacing: 0.18em; }
+
+          /* SERVICES */
+          .service-item { grid-template-columns: 1fr; gap: 0.75rem; padding: 1.5rem; }
+          .service-arrow { display: none; }
+          .service-desc { font-size: 0.95rem; }
+
+          /* MARQUEE */
           .marquee-inner { animation-duration: 90s; }
+
+          /* CONCIERGE */
+          .concierge-section { padding: 5rem 1.25rem; }
+          .quote-block { padding: 1rem 1.25rem; }
+          .invite-input { min-height: 54px; font-size: 1rem; }
+        }
+
+        @media (max-width: 480px) {
+          .hero h1 { font-size: clamp(2.4rem, 12vw, 3.5rem); }
+          .hero-philosophy { font-size: 0.9rem; }
+          .t-header { gap: 0.3rem; }
+          .service-item { padding: 1.25rem; }
+          .eco-section { padding: 4rem 1.25rem; }
         }
       `}</style>
 
@@ -454,7 +493,7 @@ export default function Home() {
 
       {/* HERO */}
       <section className="hero">
-        <div className="kicker">Brand Intelligence · Reputation Protection</div>
+        <div className="kicker">Brand Intelligence ·<br className="kicker-br" /> Reputation Protection</div>
         <p className="hero-philosophy">A single customer experience can define an entire brand.</p>
         <h1>
           Reputation,<br />
@@ -463,7 +502,8 @@ export default function Home() {
         </h1>
         <div className="rule" />
         <p className="hero-sub">
-          Built for independent premium businesses<br />
+          Built for independent premium businesses{" "}
+          <br />
           where <strong>reputation defines demand.</strong>
         </p>
         <div>
