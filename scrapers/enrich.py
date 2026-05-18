@@ -151,7 +151,7 @@ def fetch_places_data(name, city, country):
     headers = {
         "Content-Type": "application/json",
         "X-Goog-Api-Key": PLACES_API_KEY,
-        "X-Goog-FieldMask": "places.displayName,places.rating,places.userRatingCount,places.reviews,places.priceLevel",
+        "X-Goog-FieldMask": "places.displayName,places.rating,places.userRatingCount,places.reviews,places.priceLevel,places.websiteUri",
     }
     body = {"textQuery": query, "languageCode": "en"}
 
@@ -167,6 +167,7 @@ def fetch_places_data(name, city, country):
         review_count = place.get("userRatingCount", "")
         reviews      = place.get("reviews", [])
         price_level  = place.get("priceLevel", "")
+        website_uri  = place.get("websiteUri", "")
 
         # 부정 리뷰 추출 (rating 1~2)
         negative = [r.get("text", {}).get("text", "") for r in reviews
@@ -178,6 +179,7 @@ def fetch_places_data(name, city, country):
             "negative":      negative[0][:300] if negative else "",
             "price_level":   price_level,
             "all_reviews":   reviews,
+            "website_uri":   website_uri,
         }
     except Exception as e:
         print(f"  Places API 오류: {e}")
@@ -215,10 +217,8 @@ async def enrich():
         page = await context.new_page()
 
         for i, row in enumerate(rows):
-            # 이미 enriched된 행 스킵
-            if row[COL["outreach_status"]] == "enriched":
-                continue
-            if row[COL["google_rating"]]:
+            # 이미 enriched + rating 있으면 스킵
+            if row[COL["outreach_status"]] == "enriched" and row[COL["google_rating"]]:
                 continue
 
             name    = row[COL["business_name"]]
@@ -247,6 +247,9 @@ async def enrich():
                 rating       = places["rating"]
                 review_count = places["review_count"]
                 negative     = places["negative"]
+                # Places에서 website 보완 (Michelin에서 못 가져온 경우)
+                if not website and places.get("website_uri"):
+                    website = places["website_uri"]
                 print(f"  rating: {rating} ({review_count}개 리뷰)")
 
             # 4. 감정 분석
