@@ -36,16 +36,19 @@ MODEL = "gemini-3.1-flash-lite"
 SMTP_ACCOUNTS = [
     {
         "name":  "James Harrison",
+        "title": "Reputation Response, SMBkits",
         "email": "jamessmbkits@gmail.com",
         "pw":    os.getenv("SMTP_JAMES_PW", "").replace(" ", ""),
     },
     {
         "name":  "Alex Bennett",
+        "title": "Local Positioning, SMBkits",
         "email": "alexsmbkits@gmail.com",
         "pw":    os.getenv("SMTP_ALEX_PW", "").replace(" ", ""),
     },
     {
         "name":  "Sarah Mitchell",
+        "title": "Brand Voice, SMBkits",
         "email": "sarahsmbkits@gmail.com",
         "pw":    os.getenv("SMTP_SARAH_PW", "").replace(" ", ""),
     },
@@ -146,7 +149,7 @@ Write a SHORT, conversational cold email. Follow this exact flow:
 3. Empathy: acknowledge that responding to every review thoughtfully while running a full kitchen and floor operation is genuinely difficult. (1 sentence)
 4. Soft offer: mention you put together a complimentary "Online Reputation & Response Profile" specifically for {name} — they just need to reply to this email and you'll send it over. No link, no signup.
 5. CTA: end with a simple low-friction ask — "If you'd like to take a look, just reply to this email."
-6. Sign off: "Best,\\n{first_name}\\nSMBkits" — ALWAYS use {first_name}, never invent another name.
+6. Do NOT include any sign-off or signature — it will be added automatically.
 
 STRICT RULES:
 - Subject: personal, curiosity-driven. Never use: "partnership", "opportunity", "collaboration", "exciting"
@@ -174,7 +177,7 @@ RULES:
 - Casual, human tone
 - Reference the previous email naturally
 - No pressure
-- Sign off: "Best,\\n{first_name}"
+- Do NOT include any sign-off or signature
 - Different wording every time
 
 Respond ONLY in JSON (no markdown):
@@ -194,7 +197,7 @@ RULES:
 - Mention one specific stat ({reviews} reviews OR {rating} stars)
 - Mention smbkits.com once
 - Friendly, no hard feelings
-- Sign off: "Best,\\n{first_name}"
+- Do NOT include any sign-off or signature
 - Different wording every time
 
 Respond ONLY in JSON (no markdown):
@@ -222,14 +225,30 @@ Respond ONLY in JSON (no markdown):
         return None
 
 
+SIGNATURE_HTML = """
+<br><br>
+--<br>
+<span style="font-family:sans-serif;font-size:13px;">
+<strong>{name}</strong><br>
+{title} | <a href="https://smbkits.com" style="color:#888;text-decoration:none;">smbkits.com</a>
+</span>
+"""
+
 def send_email(account: dict, to_email: str, subject: str, body: str) -> bool:
-    """Gmail SMTP SSL로 발송"""
+    """Gmail SMTP SSL로 발송 (HTML — plain text 본문 + 서명)"""
     try:
+        sig  = SIGNATURE_HTML.format(name=account["name"], title=account["title"])
+        # 본문 줄바꿈 → <br> 변환 후 서명 결합
+        html_body = "<div style='font-family:sans-serif;font-size:14px;line-height:1.6'>"
+        html_body += body.replace("\n", "<br>")
+        html_body += sig + "</div>"
+
         msg = MIMEMultipart("alternative")
         msg["Subject"] = subject
         msg["From"]    = f"{account['name']} <{account['email']}>"
         msg["To"]      = to_email
-        msg.attach(MIMEText(body, "plain", "utf-8"))
+        msg.attach(MIMEText(body, "plain", "utf-8"))       # plain fallback
+        msg.attach(MIMEText(html_body, "html",  "utf-8"))  # HTML (우선)
 
         with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
             server.login(account["email"], account["pw"])
@@ -249,24 +268,29 @@ def main():
     parser.add_argument("--test-email", type=str, default="", help="테스트 발송 주소 (Sheets 무시)")
     args = parser.parse_args()
 
-    # ── 테스트 발송 모드 ─────────────────────────────────────
+    # ── 테스트 발송 모드 (3개 계정 전부 발송) ───────────────────
     if args.test_email:
-        account = random.choice(SMTP_ACCOUNTS)
         fake_lead = {
-            "business_name":  "Fleur de Sel",
-            "city":           "Taichung",
-            "country":        "Taiwan",
-            "google_rating":  "4.4",
-            "review_count":   "1405",
-            "negative_review": "The service was slow and the portion was smaller than expected for the price.",
+            "business_name":  "The Grand Table",
+            "city":           "London",
+            "country":        "United Kingdom",
+            "google_rating":  "4.6",
+            "review_count":   "892",
+            "negative_review": "waiting time was longer than expected and the portion felt small for the price.",
         }
-        print(f"[TEST] → {args.test_email} | 발송자: {account['name']}\n")
-        content = generate_email(fake_lead, "d0", sender_name=account["name"])
-        if content:
-            print(f"제목: {content['subject']}\n")
-            print(f"내용:\n{content['body']}\n")
-            success = send_email(account, args.test_email, content["subject"], content["body"])
-            print("✅ 발송 완료" if success else "❌ 발송 실패")
+        for account in SMTP_ACCOUNTS:
+            print(f"[TEST] {account['name']} → {args.test_email}")
+            content = generate_email(fake_lead, "d0", sender_name=account["name"])
+            if content:
+                # Gemini가 혹시 서명 생성했을 경우 마지막 줄 제거
+                lines = content["body"].strip().splitlines()
+                if lines and lines[-1].strip().lower() in [
+                    account["name"].split()[0].lower(), "best,", "regards,", "thanks,"
+                ]:
+                    content["body"] = "\n".join(lines[:-1]).strip()
+                print(f"  제목: {content['subject']}")
+                success = send_email(account, args.test_email, content["subject"], content["body"])
+                print(f"  {'OK' if success else 'FAIL'}\n")
         return
     # ─────────────────────────────────────────────────────────
 
