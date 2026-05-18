@@ -348,6 +348,9 @@ def main():
 
         if not status:
             d0_leads.append((i, row))
+        elif status.startswith("sending:") and days_since(status) >= 1:
+            # 전날 크래시로 sending 상태에서 멈춘 경우 → d0 재시도
+            d0_leads.append((i, row))
         elif status.startswith("d0:") and days_since(status) >= 3:
             d3_leads.append((i, row))
         elif status.startswith("d3:") and days_since(status) >= 7:
@@ -398,6 +401,10 @@ def main():
         print(f"  제목: {content['subject']}")
         print(f"  내용 미리보기: {content['body'][:80]}...")
 
+        # 발송 전 선점 — 크래시/중복 실행 시 재발송 방지
+        if not args.dry_run:
+            sheet.update_cell(i + 2, COL["outreach_status"] + 1, f"sending:{today}")
+
         if not args.dry_run:
             success = send_email(account, to_email, content["subject"], content["body"])
         else:
@@ -413,7 +420,10 @@ def main():
 
             print(f"  ✅ {'[DRY]' if args.dry_run else ''} 완료 | 상태: {new_status}")
         else:
-            print(f"  ❌ 실패")
+            # 발송 실패 시 선점 롤백 → 다음 실행에서 재시도 가능
+            if not args.dry_run:
+                sheet.update_cell(i + 2, COL["outreach_status"] + 1, "")
+            print(f"  ❌ 실패 | 상태 롤백")
 
         # 랜덤 딜레이 (인간 행동 모방) — dry-run은 스킵
         if not args.dry_run:
