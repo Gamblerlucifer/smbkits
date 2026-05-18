@@ -137,13 +137,15 @@ def days_since(status: str) -> int:
 
 # 국가 → 언어 매핑
 LANG_MAP = {
-    "Taiwan": "Traditional Chinese (繁體中文)",
-    "Japan":  "Japanese (日本語)",
-    "Korea":  "Korean (한국어)",
-    "France": "French (Français)",
-    "Italy":  "Italian (Italiano)",
-    "Spain":  "Spanish (Español)",
-    "Germany":"German (Deutsch)",
+    "Taiwan":    "Traditional Chinese (繁體中文)",
+    "Hong Kong": "Traditional Chinese (繁體中文)",
+    "Macau":     "Traditional Chinese (繁體中文)",
+    "Japan":     "Japanese (日本語)",
+    "Korea":     "Korean (한국어)",
+    "France":    "French (Français)",
+    "Italy":     "Italian (Italiano)",
+    "Spain":     "Spanish (Español)",
+    "Germany":   "German (Deutsch)",
 }
 
 def get_lang(country: str) -> str:
