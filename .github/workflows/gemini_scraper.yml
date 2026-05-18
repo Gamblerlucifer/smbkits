@@ -12,7 +12,7 @@ on:
       limit:
         description: '청크당 처리 행 수 (기본: 200)'
         required: false
-        default: '1000'
+        default: '370'
       category:
         description: '업종 (기본값: restaurant)'
         required: false
@@ -62,7 +62,7 @@ jobs:
           python -u scrapers/gemini_scraper.py \
             --chunk ${{ matrix.chunk }} \
             --total-chunks ${{ github.event.inputs.total_chunks || '4' }} \
-            --limit ${{ github.event.inputs.limit || '1000' }} \
+            --limit ${{ github.event.inputs.limit || '370' }} \
             --category "${{ github.event.inputs.category || 'restaurant' }}" \
             --min-confidence ${{ github.event.inputs.min_confidence || '0' }}
         env:
