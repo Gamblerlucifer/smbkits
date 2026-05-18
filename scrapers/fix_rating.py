@@ -93,8 +93,12 @@ def fetch_places(name, city, country):
     body = {"textQuery": query, "languageCode": "en"}
     try:
         res = requests.post(url, headers=headers, json=body, timeout=10)
-        places = res.json().get("places", [])
+        data = res.json()
+        places = data.get("places", [])
         if not places:
+            # 오류 원인 출력
+            if "error" in data:
+                print(f"  API 오류: {data['error'].get('status')} - {data['error'].get('message','')[:80]}")
             return None
         p = places[0]
         reviews  = p.get("reviews", [])
