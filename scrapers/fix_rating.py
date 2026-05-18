@@ -81,33 +81,32 @@ def get_sheet():
     return client.open_by_key(SHEET_ID).worksheet(SHEET_NAME)
 
 def fetch_places(name, city, country):
-    # country 없으면 도시만, 둘 다 없으면 이름만
+    """Legacy Places API (Find Place From Text) — 5,000 QPD 기본 쿼터"""
     parts = [p for p in [name, city, country] if p.strip()]
     query = " ".join(parts)
-    url = "https://places.googleapis.com/v1/places:searchText"
-    headers = {
-        "Content-Type": "application/json",
-        "X-Goog-Api-Key": PLACES_API_KEY,
-        "X-Goog-FieldMask": "places.rating,places.userRatingCount,places.reviews,places.websiteUri",
+    url = "https://maps.googleapis.com/maps/api/place/findplacefromtext/json"
+    params = {
+        "input":     query,
+        "inputtype": "textquery",
+        "fields":    "name,rating,user_ratings_total,website",
+        "language":  "en",
+        "key":       PLACES_API_KEY,
     }
-    body = {"textQuery": query, "languageCode": "en"}
     try:
-        res = requests.post(url, headers=headers, json=body, timeout=10)
+        res = requests.get(url, params=params, timeout=10)
         data = res.json()
-        places = data.get("places", [])
-        if not places:
-            # 오류 원인 출력
-            if "error" in data:
-                print(f"  API 오류: {data['error'].get('status')} - {data['error'].get('message','')[:80]}")
+        status = data.get("status", "")
+        candidates = data.get("candidates", [])
+        if not candidates:
+            if status not in ("ZERO_RESULTS", "OK"):
+                print(f"  API 오류: {status}")
             return None
-        p = places[0]
-        reviews  = p.get("reviews", [])
-        negative = [r.get("text", {}).get("text", "") for r in reviews if r.get("rating", 5) <= 2]
+        p = candidates[0]
         return {
             "rating":      p.get("rating", ""),
-            "review_count":p.get("userRatingCount", ""),
-            "negative":    negative[0][:300] if negative else "",
-            "website_uri": p.get("websiteUri", ""),
+            "review_count":p.get("user_ratings_total", ""),
+            "negative":    "",   # Find Place는 리뷰 미지원 (추후 Details 호출로 보완 가능)
+            "website_uri": p.get("website", ""),
         }
     except Exception as e:
         print(f"  Places API 오류: {e}")
