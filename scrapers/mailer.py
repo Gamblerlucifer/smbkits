@@ -145,7 +145,7 @@ Target restaurant:
 
 Write a SHORT, conversational cold email. Follow this exact flow:
 1. Opening: acknowledge their strong reputation ({rating} stars, {reviews} reviews) — make them feel seen (1-2 sentences)
-2. Reputation signal: mention that while analyzing their online presence, you noticed a minor pattern in recent guest feedback — use professional/euphemistic language like "a few guests have mentioned small gaps in experience" or "some feedback touching on consistency". Do NOT directly quote the negative review or attack them — frame it as a professional observation, not an accusation.
+2. Reputation signal: mention that while reviewing their online presence, you came across a recent guest comment. Include a SHORT, softened quote in quotation marks — pick 3-5 words from the negative review text that are the least harsh (e.g. "waiting time felt a little long" or "portion felt slightly small"). Attribute it to "a recent Google review". Keep it neutral, not confrontational.
 3. Empathy: acknowledge that responding to every review thoughtfully while running a full kitchen and floor operation is genuinely difficult. (1 sentence)
 4. Soft offer: mention you put together a complimentary "Online Reputation & Response Profile" specifically for {name} — they just need to reply to this email and you'll send it over. No link, no signup.
 5. CTA: end with a simple low-friction ask — "If you'd like to take a look, just reply to this email."
@@ -230,7 +230,10 @@ SIGNATURE_HTML = """
 --<br>
 <span style="font-family:sans-serif;font-size:13px;">
 <strong>{name}</strong><br>
-{title} | <a href="https://smbkits.com" style="color:#888;text-decoration:none;">smbkits.com</a>
+{title} | <a href="https://smbkits.com" style="color:#888;text-decoration:none;">smbkits.com</a><br><br>
+<a href="https://smbkits.com">
+  <img src="https://smbkits.com/logo.png" alt="SMBkits" height="28" style="display:block;">
+</a>
 </span>
 """
 
