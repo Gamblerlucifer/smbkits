@@ -111,42 +111,55 @@ Field rules:
 - total_reviews: total number of Google reviews as integer. Set null if not found.
 - confidence: integer 0–100. How confident are you this data is correct and for the right business? Penalize heavily if: business may be closed, name is ambiguous, website seems wrong, or data is from wrong location."""
 
-    try:
-        response = client.models.generate_content(
-            model=MODEL,
-            contents=prompt,
-            config=types.GenerateContentConfig(
-                tools=[types.Tool(google_search=types.GoogleSearch())],
-                response_mime_type="application/json",
-                temperature=0,
-            ),
-        )
-        text = response.text
-        if not text:
+    max_retries = 3
+    for attempt in range(max_retries):
+        try:
+            response = client.models.generate_content(
+                model=MODEL,
+                contents=prompt,
+                config=types.GenerateContentConfig(
+                    tools=[types.Tool(google_search=types.GoogleSearch())],
+                    response_mime_type="application/json",
+                    temperature=0,
+                ),
+            )
+            text = response.text
+            if not text:
+                return None
+
+            result = json.loads(text)
+            rating     = str(result.get("google_rating") or "")
+            reviews    = str(result.get("total_reviews") or "")
+            website    = result.get("website_url") or ""
+            confidence = int(result.get("confidence") or 0)
+
+            # hallucination 필터: 소셜/집계 사이트면 버림
+            if website and not is_valid_website(website):
+                print(f"  [필터] 비공식 URL 제거: {website}")
+                website = ""
+                confidence = max(0, confidence - 30)
+
+            return {
+                "rating": rating,
+                "review_count": reviews,
+                "website_uri": website,
+                "confidence": confidence,
+            }
+
+        except Exception as e:
+            err_str = str(e)
+            # 503/429: 일시적 과부하 → exponential backoff 재시도
+            if any(code in err_str for code in ["503", "429", "UNAVAILABLE", "RESOURCE_EXHAUSTED"]):
+                wait = (2 ** attempt) * 5  # 5s → 10s → 20s
+                print(f"  [재시도 {attempt+1}/{max_retries}] {err_str[:60]}... {wait}초 대기")
+                time.sleep(wait)
+                continue
+            # 그 외 에러는 즉시 포기
+            print(f"  Gemini 오류: {e}")
             return None
 
-        result = json.loads(text)
-        rating     = str(result.get("google_rating") or "")
-        reviews    = str(result.get("total_reviews") or "")
-        website    = result.get("website_url") or ""
-        confidence = int(result.get("confidence") or 0)
-
-        # hallucination 필터: 소셜/집계 사이트면 버림
-        if website and not is_valid_website(website):
-            print(f"  [필터] 비공식 URL 제거: {website}")
-            website = ""
-            confidence = max(0, confidence - 30)  # 신뢰도 페널티
-
-        return {
-            "rating": rating,
-            "review_count": reviews,
-            "website_uri": website,
-            "confidence": confidence,
-        }
-
-    except Exception as e:
-        print(f"  Gemini 오류: {e}")
-        return None
+    print(f"  [최대 재시도 초과] 행 스킵")
+    return None
 
 def extract_email(url: str) -> str:
     if not url or is_social(url):
@@ -212,9 +225,24 @@ def main():
 
         print(f"[{idx+1}/{len(my_rows)}] {name} - {city}, {country}")
 
+        full_row = list(row) + [""] * (17 - len(row))
+
+        # 기존 website 먼저 확보 (Gemini 실패해도 크롤러에 넘길 수 있도록)
+        current_website = full_row[COL["website"]]
+        if is_social(current_website):
+            current_website = ""
+
         result = query_gemini(name, city, country, args.category)
 
         if not result:
+            # Gemini 실패해도 기존 website가 있으면 email 추출은 계속
+            email = full_row[COL["email"]]
+            if current_website and not email:
+                email = extract_email(current_website)
+                if email:
+                    print(f"  [Gemini 실패, 기존 website 활용] email: {email}")
+                    full_row[COL["email"]] = email
+                    pending.append({"row_num": i + 2, "full_row": full_row})
             time.sleep(2)
             continue
 
@@ -222,13 +250,6 @@ def main():
         review_count = result["review_count"]
         website_uri  = result["website_uri"]
         confidence   = result["confidence"]
-
-        full_row = list(row) + [""] * (17 - len(row))
-
-        # 기존 website 우선, 소셜이면 버림
-        current_website = full_row[COL["website"]]
-        if is_social(current_website):
-            current_website = ""
 
         # confidence 낮으면 Gemini 결과 website 사용 안 함
         if confidence < args.min_confidence:
