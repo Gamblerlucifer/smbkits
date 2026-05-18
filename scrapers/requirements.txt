@@ -2,5 +2,5 @@
 gspread
 google-auth
 python-dotenv
-requests
+requests[socks]
 stem

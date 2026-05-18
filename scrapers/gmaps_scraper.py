@@ -1,24 +1,23 @@
 """
-SMBkits — Google Search Stealth Scraper
-Places API 없이 구글 검색 지식 패널에서 rating + website 무료 추출
+SMBkits — Google Search Direct Request Scraper
+Playwright 없이 requests + Tor SOCKS5로 구글 검색 HTML 직접 파싱
+webdriver 흔적 제로, 속도 10배
 
 Usage:
     python scrapers/gmaps_scraper.py --chunk 0 --total-chunks 4 --limit 200
 """
 
-import asyncio
 import os
 import re
 import random
+import time
 import requests
 import gspread
-from playwright.async_api import async_playwright
 from google.oauth2.service_account import Credentials
 from dotenv import load_dotenv
 import argparse
 import sys
 
-# Tor IP 로테이션 (stem 없으면 로컬 실행 시 스킵)
 try:
     from stem import Signal
     from stem.control import Controller
@@ -55,7 +54,7 @@ SOCIAL_EXCLUDE = ["instagram.com", "facebook.com", "twitter.com", "youtube.com",
                   "sevenrooms.com", "resy.com", "opentable.com", "inline.app",
                   "booking.com", "airbnb.com", "zomato.com", "tabelog.com"]
 
-IMG_EXT   = (".png", ".jpg", ".jpeg", ".gif", ".svg", ".webp", ".ico")
+IMG_EXT    = (".png", ".jpg", ".jpeg", ".gif", ".svg", ".webp", ".ico")
 SPAM_WORDS = ["example", "sentry", "pixel", "noreply", "no-reply", "wixpress",
               "schema", "wordpress", "jquery", "cloudflare", "analytics",
               "support@", "admin@", "postmaster@", "abuse@"]
@@ -67,123 +66,126 @@ USER_AGENTS = [
     "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
 ]
 
-TOR_PROXY = "socks5://127.0.0.1:9050"
-TOR_ROTATE_EVERY = 10   # N건마다 Tor 회로 교체
+TOR_PROXY       = "socks5h://127.0.0.1:9050"   # socks5h = DNS도 Tor 경유
+TOR_ROTATE_EVERY = 10
 
 def is_social(url):
     return any(s in url for s in SOCIAL_EXCLUDE) if url else False
-
-def rotate_tor_ip():
-    """Tor 새 회로 요청 (NEWNYM 신호)"""
-    if not TOR_AVAILABLE:
-        return
-    try:
-        with Controller.from_port(port=9051) as ctrl:
-            ctrl.authenticate()
-            ctrl.signal(Signal.NEWNYM)
-        print("  [Tor] 새 IP 회로 요청 완료")
-    except Exception as e:
-        print(f"  [Tor] 회로 교체 실패: {e}")
 
 def get_sheet():
     creds = Credentials.from_service_account_file(CREDS_FILE, scopes=SCOPES)
     client = gspread.authorize(creds)
     return client.open_by_key(SHEET_ID).worksheet(SHEET_NAME)
 
-async def human_delay():
-    """1.5 ~ 4.5초 인간형 랜덤 딜레이"""
-    await asyncio.sleep(random.uniform(1.5, 4.5))
+def make_session():
+    """Chrome 헤더 + Tor SOCKS5 세션 생성"""
+    s = requests.Session()
+    if TOR_AVAILABLE:
+        s.proxies = {"http": TOR_PROXY, "https": TOR_PROXY}
+    ua = random.choice(USER_AGENTS)
+    s.headers.update({
+        "User-Agent":                ua,
+        "Accept":                    "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+        "Accept-Language":           "en-US,en;q=0.9",
+        "Accept-Encoding":           "gzip, deflate, br",
+        "DNT":                       "1",
+        "Connection":                "keep-alive",
+        "Upgrade-Insecure-Requests": "1",
+        "Sec-Fetch-Dest":            "document",
+        "Sec-Fetch-Mode":            "navigate",
+        "Sec-Fetch-Site":            "none",
+        "Sec-Ch-Ua":                 '"Chromium";v="124", "Google Chrome";v="124", "Not-A.Brand";v="99"',
+        "Sec-Ch-Ua-Mobile":          "?0",
+        "Sec-Ch-Ua-Platform":        '"Windows"',
+    })
+    return s
 
-async def make_stealth_context(browser):
-    """매 요청마다 랜덤 핑거프린트 컨텍스트 생성"""
-    context = await browser.new_context(
-        viewport={"width": random.randint(1200, 1920), "height": random.randint(700, 1080)},
-        user_agent=random.choice(USER_AGENTS),
-        locale="en-US",
-        timezone_id=random.choice(["America/New_York", "America/Los_Angeles", "Europe/London"]),
-        extra_http_headers={"Accept-Language": "en-US,en;q=0.9"},
-    )
-    page = await context.new_page()
+def rotate_tor_ip():
+    if not TOR_AVAILABLE:
+        return
+    try:
+        with Controller.from_port(port=9051) as ctrl:
+            ctrl.authenticate()
+            ctrl.signal(Signal.NEWNYM)
+        time.sleep(3)   # 새 회로 안정화
+        print("  [Tor] 새 IP 회로 교체 완료")
+    except Exception as e:
+        print(f"  [Tor] 회로 교체 실패: {e}")
 
-    # webdriver 흔적 완전 마스킹
-    await page.add_init_script("""
-        Object.defineProperty(navigator, 'webdriver', {get: () => undefined});
-        Object.defineProperty(navigator, 'plugins', {get: () => [1, 2, 3, 4, 5]});
-        Object.defineProperty(navigator, 'languages', {get: () => ['en-US', 'en']});
-        window.chrome = {runtime: {}};
-        delete window.__playwright;
-        delete window.__pw_manual;
-    """)
-
-    return context, page
-
-async def search_google(page, name, city, country):
-    """Google Search 지식 패널에서 rating + website 추출"""
-    query = f"{name} {city} {country}"
+def search_google(session, name, city, country):
+    """Google Search HTML 직접 파싱 → rating + website"""
+    query   = f"{name} {city} {country}"
     encoded = requests.utils.quote(query)
-    url = f"https://www.google.com/search?q={encoded}&hl=en&gl=us"
+    url     = f"https://www.google.com/search?q={encoded}&hl=en&gl=us&num=5"
 
     try:
-        await page.goto(url, wait_until="domcontentloaded", timeout=15000)
-        await human_delay()
+        resp = session.get(url, timeout=20)
+        html = resp.text
 
-        content = await page.content()
-
-        # CAPTCHA 감지
-        if "unusual traffic" in content or await page.query_selector("form#captcha-form, div#recaptcha"):
-            print("  CAPTCHA 감지 - 스킵")
+        # CAPTCHA / 비정상 트래픽 감지
+        if "unusual traffic" in html or "recaptcha" in html.lower() or resp.status_code == 429:
+            print("  CAPTCHA/차단 감지")
             return None
 
-        rating       = ""
-        review_count = ""
-        website      = ""
+        rating = review_count = website = ""
 
-        # ── Rating 추출 (다중 패턴 폴백) ──────────────────
-        # 패턴 1: schema.org ratingValue
-        m = re.search(r'"ratingValue"\s*:\s*"?([\d.]+)"?', content)
+        # ── Rating (다중 패턴 폴백) ──────────────────────────
+        # JSON-LD ratingValue
+        m = re.search(r'"ratingValue"\s*:\s*"?([\d.]+)"?', html)
         if m:
             rating = m.group(1)
 
-        # 패턴 2: aria-label "Rated X.X out of 5"
+        # aria-label "Rated X.X out of 5"
         if not rating:
-            m = re.search(r'Rated ([\d.]+) out of 5', content)
+            m = re.search(r'Rated ([\d.]+) out of 5', html)
             if m:
                 rating = m.group(1)
 
-        # 패턴 3: 지식 패널 내 X.X 형태 (1.0~5.0 범위)
+        # 지식 패널 텍스트 패턴
         if not rating:
-            for m in re.finditer(r'\b([1-4]\.[0-9]|5\.0)\b', content):
+            m = re.search(r'\b([1-4]\.\d|5\.0)\b', html)
+            if m:
                 rating = m.group(1)
-                break
 
-        # ── Review count 추출 ─────────────────────────────
-        m = re.search(r'([\d,]+)\s+(?:Google\s+)?reviews?', content, re.IGNORECASE)
+        # ── Review count ─────────────────────────────────────
+        m = re.search(r'([\d,]+)\s+(?:Google\s+)?reviews?', html, re.IGNORECASE)
         if m:
             review_count = m.group(1).replace(",", "")
 
-        # ── Website 추출 ──────────────────────────────────
-        # 지식 패널 공식 웹사이트 링크
-        for sel in ['[data-attrid*="website"] a', '[data-attrid*="url"] a',
-                    'a[jsname][href^="http"]:not([href*="google."])']:
-            el = await page.query_selector(sel)
-            if el:
-                href = await el.get_attribute("href") or ""
-                if href and not is_social(href) and "google." not in href:
-                    website = href.split("&")[0]  # 추적 파라미터 제거
+        # JSON-LD reviewCount
+        if not review_count:
+            m = re.search(r'"reviewCount"\s*:\s*"?([\d]+)"?', html)
+            if m:
+                review_count = m.group(1)
+
+        # ── Website ──────────────────────────────────────────
+        # 지식 패널 공식 웹사이트 (href 직접 추출)
+        for pat in [
+            r'data-attrid="[^"]*(?:website|url)[^"]*"[^>]*href="([^"]+)"',
+            r'href="(https?://(?!(?:www\.)?google\.)[^"]+)"[^>]*data-attrid',
+        ]:
+            m = re.search(pat, html, re.IGNORECASE)
+            if m:
+                candidate = m.group(1).split("&")[0]
+                if not is_social(candidate):
+                    website = candidate
                     break
 
-        return {
-            "rating":       rating,
-            "review_count": review_count,
-            "website_uri":  website,
-        }
+        # fallback: JSON-LD url 필드
+        if not website:
+            m = re.search(r'"url"\s*:\s*"(https?://(?!(?:www\.)?google\.)[^"]+)"', html)
+            if m:
+                candidate = m.group(1)
+                if not is_social(candidate):
+                    website = candidate
+
+        return {"rating": rating, "review_count": review_count, "website_uri": website}
 
     except Exception as e:
-        print(f"  검색 오류: {e}")
+        print(f"  요청 오류: {e}")
         return None
 
 def extract_email(url):
-    """requests로 이메일 추출 (contact/about 페이지 포함)"""
     if not url or is_social(url):
         return ""
     headers = {"User-Agent": random.choice(USER_AGENTS)}
@@ -196,8 +198,7 @@ def extract_email(url):
                 e_low = e.lower()
                 if any(e_low.endswith(x) for x in IMG_EXT): continue
                 if any(x in e_low for x in SPAM_WORDS): continue
-                tld = e_low.rsplit(".", 1)[-1]
-                if tld in {"png","jpg","jpeg","gif","svg","webp","ico"}: continue
+                if e_low.rsplit(".", 1)[-1] in {"png","jpg","jpeg","gif","svg","webp","ico"}: continue
                 filtered.append(e)
             if filtered:
                 return filtered[0]
@@ -205,7 +206,7 @@ def extract_email(url):
             continue
     return ""
 
-async def main():
+def main():
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
     parser = argparse.ArgumentParser()
@@ -214,91 +215,88 @@ async def main():
     parser.add_argument("--limit",        type=int, default=200, help="이번 실행에서 처리할 최대 행 수")
     args = parser.parse_args()
 
+    mode = "Tor" if TOR_AVAILABLE else "직접"
+    print(f"[{mode} 모드] Chunk {args.chunk}/{args.total_chunks-1}")
+
     sheet    = get_sheet()
     all_rows = sheet.get_all_values()
     rows     = all_rows[1:]
 
-    # rating 없는 행만
     unprocessed = [(i, r) for i, r in enumerate(rows)
                    if not (len(r) > 9 and r[COL["google_rating"]])]
 
-    # 이 청크가 담당할 행 (라운드로빈 분배 → 서로 다른 IP가 다른 나라 처리)
     my_rows = [x for j, x in enumerate(unprocessed) if j % args.total_chunks == args.chunk]
     my_rows = my_rows[:args.limit]
 
-    total_unprocessed = len(unprocessed)
-    print(f"[Chunk {args.chunk}/{args.total_chunks-1}] 미처리: {total_unprocessed}행 | 담당: {len(my_rows)}행")
+    print(f"미처리 전체: {len(unprocessed)}행 | 담당: {len(my_rows)}행\n")
     if not my_rows:
         print("처리할 행 없음 - 완료")
         return
 
-    async with async_playwright() as p:
-        # Tor 사용 가능하면 프록시 경유
-        launch_opts = {"headless": True}
-        if TOR_AVAILABLE:
-            launch_opts["proxy"] = {"server": TOR_PROXY}
-            print(f"  [Tor] 프록시 활성화: {TOR_PROXY}")
-        browser = await p.chromium.launch(**launch_opts)
+    session = make_session()
+    captcha_streak = 0   # 연속 CAPTCHA 카운터
 
-        for idx, (i, row) in enumerate(my_rows):
-            name    = row[COL["business_name"]] if len(row) > 0 else ""
-            city    = row[COL["city"]]          if len(row) > 2 else ""
-            country = row[COL["country"]]       if len(row) > 3 else ""
+    for idx, (i, row) in enumerate(my_rows):
+        name    = row[COL["business_name"]] if len(row) > 0 else ""
+        city    = row[COL["city"]]          if len(row) > 2 else ""
+        country = row[COL["country"]]       if len(row) > 3 else ""
 
-            if not name:
-                continue
+        if not name:
+            continue
 
-            print(f"  [{idx+1}/{len(my_rows)}] {name} - {city}, {country}")
+        print(f"[{idx+1}/{len(my_rows)}] {name} - {city}, {country}")
 
-            # N건마다 Tor 회로 교체
-            if idx > 0 and idx % TOR_ROTATE_EVERY == 0:
+        # N건마다 Tor 회로 교체 + 세션 갱신
+        if idx > 0 and idx % TOR_ROTATE_EVERY == 0:
+            rotate_tor_ip()
+            session = make_session()
+
+        result = search_google(session, name, city, country)
+
+        if not result:
+            captcha_streak += 1
+            if captcha_streak >= 3:
+                print("  연속 차단 3회 - Tor 회로 강제 교체")
                 rotate_tor_ip()
-                await asyncio.sleep(3)  # 새 회로 안정화 대기
+                session = make_session()
+                captcha_streak = 0
+            time.sleep(random.uniform(2, 5))
+            continue
 
-            # 매 요청마다 새 컨텍스트 (핑거프린트 교체)
-            context, page = await make_stealth_context(browser)
-            try:
-                result = await search_google(page, name, city, country)
-            finally:
-                await context.close()
+        captcha_streak = 0
+        rating       = result["rating"]
+        review_count = result["review_count"]
+        website_uri  = result["website_uri"]
 
-            if not result:
-                continue
+        full_row = list(row) + [""] * (17 - len(row))
 
-            rating       = result["rating"]
-            review_count = result["review_count"]
-            website_uri  = result["website_uri"]
+        current_website = full_row[COL["website"]]
+        if is_social(current_website):
+            current_website = ""
+        website = current_website or website_uri
+        if is_social(website):
+            website = ""
 
-            full_row = list(row) + [""] * (17 - len(row))
+        email = full_row[COL["email"]]
+        if website and not email:
+            email = extract_email(website)
 
-            current_website = full_row[COL["website"]]
-            if is_social(current_website):
-                current_website = ""
-            website = current_website or website_uri
-            if is_social(website):
-                website = ""
+        sentiment = min(100, int(float(rating) * 20)) if rating else 50
 
-            email = full_row[COL["email"]]
-            if website and not email:
-                email = extract_email(website)
+        print(f"  rating: {rating or '-'} ({review_count}개) | "
+              f"website: {website or '없음'} | email: {email or '없음'}")
 
-            sentiment = min(100, int(float(rating) * 20)) if rating else 50
+        row_num = i + 2
+        full_row[COL["google_rating"]]   = rating
+        full_row[COL["review_count"]]    = review_count
+        full_row[COL["sentiment_score"]] = sentiment
+        full_row[COL["website"]]         = website
+        full_row[COL["email"]]           = email
 
-            print(f"    rating: {rating or '-'} ({review_count}개) | "
-                  f"website: {website or '없음'} | email: {email or '없음'}")
-
-            row_num = i + 2
-            full_row[COL["google_rating"]]   = rating
-            full_row[COL["review_count"]]    = review_count
-            full_row[COL["sentiment_score"]] = sentiment
-            full_row[COL["website"]]         = website
-            full_row[COL["email"]]           = email
-
-            sheet.update(range_name=f"A{row_num}:Q{row_num}", values=[full_row])
-
-        await browser.close()
+        sheet.update(range_name=f"A{row_num}:Q{row_num}", values=[full_row])
+        time.sleep(random.uniform(1.5, 3.5))
 
     print(f"\n[Chunk {args.chunk}] 완료")
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    main()
