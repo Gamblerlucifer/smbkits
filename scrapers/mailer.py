@@ -14,7 +14,7 @@ import time
 import random
 import smtplib
 import gspread
-from datetime import datetime, date
+from datetime import datetime, date, timezone
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from google import genai
@@ -77,6 +77,8 @@ COL = {
     "outreach_status": 14,
 }
 
+LOG_HEADERS = ["timestamp", "recipient", "sender_email", "sender_name", "sequence", "subject", "body_preview"]
+
 SCOPES = [
     "https://www.googleapis.com/auth/spreadsheets",
     "https://www.googleapis.com/auth/drive",
@@ -97,6 +99,30 @@ def get_sheet():
     creds = Credentials.from_service_account_file(CREDS_FILE, scopes=SCOPES)
     client = gspread.authorize(creds)
     return client.open_by_key(SHEET_ID).worksheet(SHEET_NAME)
+
+
+def get_log_sheet():
+    """Email_Logs 탭 반환 — 없으면 자동 생성 + 헤더 삽입"""
+    creds  = Credentials.from_service_account_file(CREDS_FILE, scopes=SCOPES)
+    client = gspread.authorize(creds)
+    wb     = client.open_by_key(SHEET_ID)
+    try:
+        ws = wb.worksheet("Email_Logs")
+    except gspread.exceptions.WorksheetNotFound:
+        ws = wb.add_worksheet(title="Email_Logs", rows=10000, cols=len(LOG_HEADERS))
+        ws.append_row(LOG_HEADERS, value_input_option="RAW")
+        print("  [Email_Logs] 탭 신규 생성 완료")
+    return ws
+
+
+def hours_since_sending(status: str) -> float:
+    """'sending:2026-05-20T07:43:21.123456' 형식에서 경과 시간(시) 반환"""
+    try:
+        ts_str = status.split(":", 1)[1]
+        ts = datetime.fromisoformat(ts_str).replace(tzinfo=timezone.utc)
+        return (datetime.now(timezone.utc) - ts).total_seconds() / 3600
+    except Exception:
+        return 99  # 파싱 실패 → stale 처리
 
 
 def days_since(status: str) -> int:
@@ -249,7 +275,6 @@ def send_email(account: dict, to_email: str, subject: str, body: str) -> bool:
     """Gmail SMTP SSL로 발송 (HTML — plain text 본문 + 서명)"""
     try:
         sig  = SIGNATURE_HTML.format(name=account["name"], title=account["title"])
-        # 본문 줄바꿈 → <br> 변환 후 서명 결합
         html_body = "<div style='font-family:sans-serif;font-size:14px;line-height:1.6'>"
         html_body += body.replace("\n", "<br>")
         html_body += sig + "</div>"
@@ -258,8 +283,8 @@ def send_email(account: dict, to_email: str, subject: str, body: str) -> bool:
         msg["Subject"] = subject
         msg["From"]    = f"{account['name']} <{account['email']}>"
         msg["To"]      = to_email
-        msg.attach(MIMEText(body, "plain", "utf-8"))       # plain fallback
-        msg.attach(MIMEText(html_body, "html",  "utf-8"))  # HTML (우선)
+        msg.attach(MIMEText(body, "plain", "utf-8"))
+        msg.attach(MIMEText(html_body, "html",  "utf-8"))
 
         with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
             server.login(account["email"], account["pw"])
@@ -286,7 +311,7 @@ def main():
         jitter = random.randint(0, 45 * 60)
         print(f"[Jitter] {jitter // 60}분 {jitter % 60}초 후 발송 시작...\n")
         time.sleep(jitter)
-    # ─────────────────────────────────────────────────────────────
+    # ────────────────────────────────────────────────────────────
 
     # ── 테스트 발송 모드 (3개 계정 전부 발송) ───────────────────
     if args.test_email:
@@ -302,7 +327,6 @@ def main():
             print(f"[TEST] {account['name']} → {args.test_email}")
             content = generate_email(fake_lead, "d0", sender_name=account["name"])
             if content:
-                # Gemini가 혹시 서명 생성했을 경우 마지막 줄 제거
                 lines = content["body"].strip().splitlines()
                 if lines and lines[-1].strip().lower() in [
                     account["name"].split()[0].lower(), "best,", "regards,", "thanks,"
@@ -312,7 +336,7 @@ def main():
                 success = send_email(account, args.test_email, content["subject"], content["body"])
                 print(f"  {'OK' if success else 'FAIL'}\n")
         return
-    # ─────────────────────────────────────────────────────────
+    # ────────────────────────────────────────────────────────────
 
     week   = args.week if args.week > 0 else current_week()
     lo, hi = WARMUP[week]
@@ -330,9 +354,10 @@ def main():
     if args.dry_run:
         print("*** DRY RUN 모드 — 실제 발송 없음 ***\n")
 
-    sheet    = get_sheet()
-    all_rows = sheet.get_all_values()
-    rows     = all_rows[1:]
+    sheet     = get_sheet()
+    log_sheet = get_log_sheet()
+    all_rows  = sheet.get_all_values()
+    rows      = all_rows[1:]
 
     # 시퀀스별 리드 분류
     d0_leads, d3_leads, d10_leads = [], [], []
@@ -348,9 +373,12 @@ def main():
 
         if not status:
             d0_leads.append((i, row))
-        elif status.startswith("sending:") and days_since(status) >= 1:
-            # 전날 크래시로 sending 상태에서 멈춘 경우 → d0 재시도
+        elif status.startswith("sending:") and hours_since_sending(status) >= 2:
+            # 2시간 이상 sending 상태 = 크래시로 멈춘 것 → d0 재시도
             d0_leads.append((i, row))
+        elif status.startswith("sending:"):
+            # 2시간 미만 = 다른 인스턴스가 처리 중 → 스킵
+            continue
         elif status.startswith("d0:") and days_since(status) >= 3:
             d3_leads.append((i, row))
         elif status.startswith("d3:") and days_since(status) >= 7:
@@ -401,9 +429,10 @@ def main():
         print(f"  제목: {content['subject']}")
         print(f"  내용 미리보기: {content['body'][:80]}...")
 
-        # 발송 전 선점 — 크래시/중복 실행 시 재발송 방지
+        # 발송 전 선점 — UTC ISO timestamp으로 stale 2시간 판단
         if not args.dry_run:
-            sheet.update_cell(i + 2, COL["outreach_status"] + 1, f"sending:{today}")
+            ts_now = datetime.now(timezone.utc).isoformat()
+            sheet.update_cell(i + 2, COL["outreach_status"] + 1, f"sending:{ts_now}")
 
         if not args.dry_run:
             success = send_email(account, to_email, content["subject"], content["body"])
@@ -416,7 +445,22 @@ def main():
             new_status = f"{sequence}:{today}"
 
             if not args.dry_run:
+                # 메인 시트 상태 확정
                 sheet.update_cell(i + 2, COL["outreach_status"] + 1, new_status)
+                # Email_Logs 탭에 발송 내용 영구 기록
+                log_row = [
+                    datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC"),
+                    to_email,
+                    account["email"],
+                    account["name"],
+                    sequence,
+                    content["subject"],
+                    content["body"][:200] + ("..." if len(content["body"]) > 200 else ""),
+                ]
+                try:
+                    log_sheet.append_row(log_row, value_input_option="RAW")
+                except Exception as e:
+                    print(f"  [로그 오류] {e}")
 
             print(f"  ✅ {'[DRY]' if args.dry_run else ''} 완료 | 상태: {new_status}")
         else:
