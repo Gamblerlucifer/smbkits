@@ -7,11 +7,48 @@ Usage:
 """
 
 import os
+import re
 import time
 import requests
 import gspread
 from google.oauth2.service_account import Credentials
 from dotenv import load_dotenv
+
+SOCIAL_EXCLUDE = ["instagram.com", "facebook.com", "twitter.com", "youtube.com",
+                  "tripadvisor.com", "yelp.com", "google.com", "t.co",
+                  "sevenrooms.com", "resy.com", "opentable.com", "inline.app",
+                  "booking.com", "airbnb.com", "zomato.com", "tabelog.com"]
+
+IMG_EXT = (".png", ".jpg", ".jpeg", ".gif", ".svg", ".webp", ".ico")
+SPAM_WORDS = ["example", "sentry", "pixel", "noreply", "no-reply", "wixpress",
+              "schema", "wordpress", "jquery", "cloudflare", "analytics",
+              "support@", "admin@", "postmaster@", "abuse@"]
+
+def is_social(url):
+    return any(s in url for s in SOCIAL_EXCLUDE)
+
+def extract_email(url):
+    """requests로 페이지 + contact 페이지에서 이메일 추출"""
+    if not url or is_social(url):
+        return ""
+    headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
+    for target in [url, url.rstrip("/") + "/contact", url.rstrip("/") + "/about"]:
+        try:
+            res = requests.get(target, headers=headers, timeout=8)
+            emails = re.findall(r"[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}", res.text)
+            filtered = []
+            for e in emails:
+                e_low = e.lower()
+                if any(e_low.endswith(x) for x in IMG_EXT): continue
+                if any(x in e_low for x in SPAM_WORDS): continue
+                tld = e_low.rsplit(".", 1)[-1]
+                if tld in {"png","jpg","jpeg","gif","svg","webp","ico"}: continue
+                filtered.append(e)
+            if filtered:
+                return filtered[0]
+        except:
+            continue
+    return ""
 
 load_dotenv("scrapers/.env")
 
@@ -30,6 +67,7 @@ COL = {
     "city":           2,
     "country":        3,
     "website":        4,
+    "email":          6,
     "google_rating":  9,
     "review_count":   10,
     "negative_review":12,
@@ -112,18 +150,30 @@ def main():
         website_uri  = places["website_uri"]
         sentiment    = analyze_sentiment(negative, rating)
 
-        print(f"  rating: {rating} ({review_count}개) | website: {website_uri or '없음'}")
+        # 소셜 URL 필터링
+        if is_social(website_uri):
+            website_uri = ""
 
-        row_num = i + 2  # 1-based + header
-        full_row = list(row) + [""] * (17 - len(row))
+        # website 보완
+        current_website = full_row[COL["website"]] if len(full_row) > COL["website"] else ""
+        if is_social(current_website):
+            current_website = ""
+        website = current_website or website_uri
 
+        # 이메일 추출 (website 있을 때만)
+        email = full_row[COL["email"]] if len(full_row) > COL["email"] else ""
+        if website and not email:
+            email = extract_email(website)
+
+        print(f"  rating: {rating} ({review_count}개) | website: {website or '없음'} | email: {email or '없음'}")
+
+        row_num = i + 2
         full_row[COL["google_rating"]]   = rating
         full_row[COL["review_count"]]    = review_count
         full_row[COL["negative_review"]] = negative
         full_row[COL["sentiment_score"]] = sentiment
-        # website 보완 (비어있을 때만)
-        if not full_row[COL["website"]] and website_uri:
-            full_row[COL["website"]] = website_uri
+        full_row[COL["website"]]         = website
+        full_row[COL["email"]]           = email
 
         sheet.update(range_name=f"A{row_num}:Q{row_num}", values=[full_row])
         time.sleep(0.5)
