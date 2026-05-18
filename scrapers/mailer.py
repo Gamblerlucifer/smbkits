@@ -141,19 +141,20 @@ Target restaurant:
 - Write in: {lang}
 
 Write a SHORT, conversational cold email. Follow this exact flow:
-1. Opening: mention you came across {name} and note their rating + review count naturally (1-2 sentences)
-2. Review reference: quote a short phrase DIRECTLY from the negative review text using "quotation marks". Attribute it explicitly to "a recent Google review". Make it feel like you actually read it.
-3. Empathy bridge: acknowledge why it is difficult for any restaurant to receive that kind of feedback — connect problem to reality (1 sentence). Do NOT present an AI-drafted reply.
-4. Problem → solution bridge: mention that many owners simply do not have time to respond to every review consistently, especially during busy service — then naturally introduce smbkits.com as the reason it was built. (2 sentences)
-5. Sign off: "Best,\\n{first_name}" — ALWAYS use {first_name}, never invent another name.
+1. Opening: acknowledge their strong reputation ({rating} stars, {reviews} reviews) — make them feel seen (1-2 sentences)
+2. Reputation signal: mention that while analyzing their online presence, you noticed a minor pattern in recent guest feedback — use professional/euphemistic language like "a few guests have mentioned small gaps in experience" or "some feedback touching on consistency". Do NOT directly quote the negative review or attack them — frame it as a professional observation, not an accusation.
+3. Empathy: acknowledge that responding to every review thoughtfully while running a full kitchen and floor operation is genuinely difficult. (1 sentence)
+4. Soft offer: mention you put together a complimentary "Online Reputation & Response Profile" specifically for {name} — they just need to reply to this email and you'll send it over. No link, no signup.
+5. CTA: end with a simple low-friction ask — "If you'd like to take a look, just reply to this email."
+6. Sign off: "Best,\\n{first_name}\\nSMBkits" — ALWAYS use {first_name}, never invent another name.
 
 STRICT RULES:
 - Subject: personal, curiosity-driven. Never use: "partnership", "opportunity", "collaboration", "exciting"
-- Body: under 160 words, plain text, no bullet points, no bold
+- Body: under 170 words, plain text, no bullet points, no bold
 - Line breaks between every paragraph
-- Review quote MUST use actual words from the negative review — never paraphrase generically
-- Never say "our AI could draft a reply" — too salesy
-- Sound like a real human who read their reviews, not a marketer
+- Never directly quote harsh review content — frame issues as professional observations
+- Never say "our AI could draft a reply" or push the website link as CTA
+- Sound like a real human consultant, not a marketer
 - Every email must use different wording and structure
 
 Respond ONLY in this exact JSON format (no markdown):
