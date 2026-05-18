@@ -1,14 +1,14 @@
 name: SMBkits Cold Mailer
 
 on:
-  # 현지시간 11:00 도착 기준 (2026-05 DST 반영)
+  # 현지시간 08:00 도착 기준 (2026-05 DST 반영) — 오너 아침 메일 체크 타임
   schedule:
-    - cron: '0 2  * * *'   # 02:00 UTC → Japan, Korea     (UTC+9)
-    - cron: '0 3  * * *'   # 03:00 UTC → Taiwan            (UTC+8)
-    - cron: '0 9  * * *'   # 09:00 UTC → France/Italy/Spain/Germany (UTC+2 CEST)
-    - cron: '0 10 * * *'   # 10:00 UTC → United Kingdom    (UTC+1 BST)
-    - cron: '0 15 * * *'   # 15:00 UTC → US East           (UTC-4 EDT)
-    - cron: '0 18 * * *'   # 18:00 UTC → US West           (UTC-7 PDT)
+    - cron: '0 23 * * *'   # 23:00 UTC → Japan, Korea     (UTC+9,  현지 08:00)
+    - cron: '0 0  * * *'   # 00:00 UTC → Taiwan            (UTC+8,  현지 08:00)
+    - cron: '0 6  * * *'   # 06:00 UTC → France/Italy/Spain/Germany (UTC+2 CEST, 현지 08:00)
+    - cron: '0 7  * * *'   # 07:00 UTC → United Kingdom    (UTC+1 BST, 현지 08:00)
+    - cron: '0 12 * * *'   # 12:00 UTC → US East           (UTC-4 EDT, 현지 08:00)
+    - cron: '0 15 * * *'   # 15:00 UTC → US West           (UTC-7 PDT, 현지 08:00)
   workflow_dispatch:
     inputs:
       week:
@@ -63,12 +63,12 @@ jobs:
         run: |
           HOUR=$(date -u +%H | sed 's/^0//')
           case $HOUR in
-            2)  echo "COUNTRIES=Japan,Korea"                          >> $GITHUB_ENV ;;
-            3)  echo "COUNTRIES=Taiwan"                               >> $GITHUB_ENV ;;
-            9)  echo "COUNTRIES=France,Italy,Spain,Germany"           >> $GITHUB_ENV ;;
-            10) echo "COUNTRIES=United Kingdom"                       >> $GITHUB_ENV ;;
+            23) echo "COUNTRIES=Japan,Korea"                          >> $GITHUB_ENV ;;
+            0)  echo "COUNTRIES=Taiwan"                               >> $GITHUB_ENV ;;
+            6)  echo "COUNTRIES=France,Italy,Spain,Germany"           >> $GITHUB_ENV ;;
+            7)  echo "COUNTRIES=United Kingdom"                       >> $GITHUB_ENV ;;
+            12) echo "COUNTRIES=United States"                        >> $GITHUB_ENV ;;
             15) echo "COUNTRIES=United States"                        >> $GITHUB_ENV ;;
-            18) echo "COUNTRIES=United States"                        >> $GITHUB_ENV ;;
             *)  echo "COUNTRIES="                                     >> $GITHUB_ENV ;;
           esac
           echo "[Schedule] UTC hour=${HOUR} → COUNTRIES=${COUNTRIES}"
