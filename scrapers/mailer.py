@@ -280,6 +280,14 @@ def main():
     parser.add_argument("--countries",  type=str, default="",  help="발송 대상 국가 쉼표 구분 (예: Japan,Korea). 미입력시 전체")
     args = parser.parse_args()
 
+    # ── 랜덤 슬립 (automation footprint 방지) ───────────────────
+    # cron 트리거 후 0~45분 랜덤 대기 → 실제 발송 07:43~08:28 local
+    if not args.dry_run and not args.test_email:
+        jitter = random.randint(0, 45 * 60)
+        print(f"[Jitter] {jitter // 60}분 {jitter % 60}초 후 발송 시작...\n")
+        time.sleep(jitter)
+    # ─────────────────────────────────────────────────────────────
+
     # ── 테스트 발송 모드 (3개 계정 전부 발송) ───────────────────
     if args.test_email:
         fake_lead = {
