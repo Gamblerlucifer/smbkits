@@ -81,7 +81,9 @@ def get_sheet():
     return client.open_by_key(SHEET_ID).worksheet(SHEET_NAME)
 
 def fetch_places(name, city, country):
-    query = f"{name} {city} {country}".strip()
+    # country 없으면 도시만, 둘 다 없으면 이름만
+    parts = [p for p in [name, city, country] if p.strip()]
+    query = " ".join(parts)
     url = "https://places.googleapis.com/v1/places:searchText"
     headers = {
         "Content-Type": "application/json",
@@ -138,6 +140,9 @@ def main():
 
         print(f"[{idx+1}/{len(targets)}] {name} - {city}, {country}")
 
+        # full_row 초기화 (여기서!)
+        full_row = list(row) + [""] * (17 - len(row))
+
         places = fetch_places(name, city, country)
         if not places:
             print(f"  Places: 없음")
@@ -155,13 +160,13 @@ def main():
             website_uri = ""
 
         # website 보완
-        current_website = full_row[COL["website"]] if len(full_row) > COL["website"] else ""
+        current_website = full_row[COL["website"]]
         if is_social(current_website):
             current_website = ""
         website = current_website or website_uri
 
         # 이메일 추출 (website 있을 때만)
-        email = full_row[COL["email"]] if len(full_row) > COL["email"] else ""
+        email = full_row[COL["email"]]
         if website and not email:
             email = extract_email(website)
 
