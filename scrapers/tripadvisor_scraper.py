@@ -117,7 +117,7 @@ async def get_detail(page, url, city_name, country):
 async def main():
     async with async_playwright() as p:
         browser = await p.chromium.launch(
-            headless=True,
+            headless=False,
             args=[
                 "--disable-blink-features=AutomationControlled",
                 "--no-sandbox",
