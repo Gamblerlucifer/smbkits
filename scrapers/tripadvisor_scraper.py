@@ -5,7 +5,6 @@ SMBkits — TripAdvisor Fine Dining Scraper
 
 import os, sys, re, asyncio, random, gspread
 from playwright.async_api import async_playwright
-from playwright_stealth import stealth_async
 from google.oauth2.service_account import Credentials
 from dotenv import load_dotenv
 
@@ -117,14 +116,23 @@ async def get_detail(page, url, city_name, country):
 
 async def main():
     async with async_playwright() as p:
-        browser = await p.chromium.launch(headless=True)
+        browser = await p.chromium.launch(
+            headless=True,
+            args=[
+                "--disable-blink-features=AutomationControlled",
+                "--no-sandbox",
+                "--disable-dev-shm-usage",
+            ]
+        )
         context = await browser.new_context(
             user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
             viewport={"width": 1280, "height": 800},
             locale="en-US",
+            extra_http_headers={"Accept-Language": "en-US,en;q=0.9"},
         )
+        # webdriver 감지 우회
+        await context.add_init_script("Object.defineProperty(navigator, 'webdriver', {get: () => undefined})")
         page = await context.new_page()
-        await stealth_async(page)
         total = 0
 
         for city in CITIES:
