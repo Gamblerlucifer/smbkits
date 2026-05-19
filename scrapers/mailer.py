@@ -368,12 +368,20 @@ def main():
         email   = row[COL["email"]]           if len(row) > 6  else ""
         status  = row[COL["outreach_status"]]  if len(row) > 14 else ""
         country = row[COL["country"]]          if len(row) > 3  else ""
-        if not email:
+        # 유효한 이메일 형식 검증 (@ 포함, 도메인에 점 있음, 이미지 확장자 제외)
+        if not email or "@" not in email or "." not in email.split("@")[-1]:
+            continue
+        if any(email.lower().endswith(ext) for ext in (".png", ".jpg", ".jpeg", ".gif", ".svg", ".webp")):
             continue
         if target_countries and country not in target_countries:
             continue
 
-        if not status:
+        # 이메일 시퀀스 미시작 상태 — 스크래퍼 상태값(enriched/pending 등) 포함
+        is_new = (not status) or (status not in ("",) and not any(
+            status.startswith(p) for p in ("d0:", "d3:", "d10:", "sending:")
+        ))
+
+        if is_new:
             d0_leads.append((i, row))
         elif status.startswith("sending:") and hours_since_sending(status) >= 2:
             # 2시간 이상 sending 상태 = 크래시로 멈춘 것 → d0 재시도
