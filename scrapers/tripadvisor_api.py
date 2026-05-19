@@ -4,8 +4,9 @@ Chrome TLS 핑거프린트 완전 모방 → DataDome 우회
 브라우저 불필요, GitHub Actions 가능
 """
 
-import os, sys, re, json, time, gspread
+import os, sys, re, json, time, gspread, asyncio
 from curl_cffi import requests
+from playwright.async_api import async_playwright
 from google.oauth2.service_account import Credentials
 from dotenv import load_dotenv
 
@@ -38,7 +39,25 @@ headers_row = sheet.row_values(1)
 existing = set(r.get("tripadvisor_url","") for r in sheet.get_all_records() if r.get("tripadvisor_url"))
 print(f"기존 수집: {len(existing)}개\n")
 
-session = requests.Session(impersonate="chrome124")
+async def get_datadome_cookie():
+    """Playwright로 TripAdvisor 한 번 방문 → DataDome 쿠키 추출"""
+    async with async_playwright() as p:
+        browser = await p.chromium.launch(headless=False)
+        context = await browser.new_context(
+            user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
+        )
+        page = await context.new_page()
+        await page.goto("https://www.tripadvisor.com/", wait_until="domcontentloaded", timeout=30000)
+        await asyncio.sleep(4)
+        cookies = await context.cookies()
+        await browser.close()
+    cookie_dict = {c["name"]: c["value"] for c in cookies}
+    dd = cookie_dict.get("datadome", "")
+    print(f"DataDome 쿠키: {'획득' if dd else '실패'}")
+    return cookie_dict
+
+cookie_jar = asyncio.run(get_datadome_cookie())
+session = requests.Session(impersonate="chrome124", cookies=cookie_jar)
 
 def get(url, **kwargs):
     r = session.get(url, timeout=20, **kwargs)
