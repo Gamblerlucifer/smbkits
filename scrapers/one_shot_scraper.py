@@ -24,7 +24,6 @@ DAILY_LIMIT = 1490    # RPD 한도 (1,500 - 안전마진 10)
 RPM_DELAY   = 15.0    # 15초 간격 = 분당 4회 (Search Grounding RPM 안전)
 
 # 모델 폴백 체인: (model_id, use_search_grounding)
-# 2.5 Flash RPD 소진 → 3.1 Flash Lite → Gemma
 MODELS = [
     ("gemini-2.5-flash",      True),   # Search Grounding, RPD ~20
     ("gemini-3.1-flash-lite", False),  # 텍스트만, RPD 500
@@ -60,6 +59,12 @@ if "phone" not in headers:
     headers.append("phone")
 phone_col = col("phone")
 
+# scraper_done 컬럼: 시도한 행 마킹 → 재실행 시 스킵
+if "scraper_done" not in headers:
+    sheet.update_cell(1, len(headers) + 1, "scraper_done")
+    headers.append("scraper_done")
+done_col = col("scraper_done")
+
 # ── 이메일 크롤링 ────────────────────────────────────────────
 IMG_EXT    = (".png",".jpg",".jpeg",".gif",".svg",".webp",".ico")
 SPAM_WORDS = ["noreply","no-reply","example","sentry","wixpress",
@@ -88,13 +93,13 @@ def crawl_email(url):
             continue
     return ""
 
-# ── 타겟 추출 ────────────────────────────────────────────────
+# ── 타겟 추출: scraper_done 없는 행만 ────────────────────────
 all_records = sheet.get_all_records()
 print(f"총 {len(all_records)}개 리드 탐색 중...")
 
 targets = []
 for i, rec in enumerate(all_records, start=2):
-    if not rec.get("email") or not rec.get("website"):
+    if not rec.get("scraper_done"):   # 아직 시도 안 한 행만
         targets.append({
             "row": i,
             "name": rec.get("business_name", ""),
@@ -162,7 +167,7 @@ for b_idx, batch in enumerate(batches[:DAILY_LIMIT]):
                 tools=[{"google_search": {}}] if use_grounding else None
             )
             succeeded = False
-            for attempt in range(2):  # 동일 모델 최대 2회 (RPM 일시 초과만 재시도)
+            for attempt in range(2):
                 try:
                     resp = gemini.models.generate_content(
                         model=model_id,
@@ -180,12 +185,10 @@ for b_idx, batch in enumerate(batches[:DAILY_LIMIT]):
                         if attempt == 0:
                             print(f"  [{model_id}] 429 → 30초 대기 후 재시도...")
                             time.sleep(30)
-                        # attempt 1 실패 = RPD 소진 → 즉시 다음 모델로
                     else:
                         raise
             if succeeded:
                 break
-            # RPD 소진 → 다음 모델로
             print(f"  [{model_id}] RPD 소진 → 다음 모델로 전환")
             current_model_idx += 1
 
@@ -211,6 +214,8 @@ for b_idx, batch in enumerate(batches[:DAILY_LIMIT]):
             if instagram:                   sheet_updates.append((row_num, insta_col,   instagram))
             if item.get("google_rating"):   sheet_updates.append((row_num, rating_col,  item["google_rating"]))
             if item.get("review_count"):    sheet_updates.append((row_num, reviews_col, item["review_count"]))
+            # 결과 유무 관계없이 시도 완료 마킹
+            sheet_updates.append((row_num, done_col, "Y"))
 
             name = batch[j]['name']
             print(f"  [{row_num}] {name[:25]:<25} web:{website[:30] or '-'} | ig:{instagram or '-'} | email:{email or '-'}")
