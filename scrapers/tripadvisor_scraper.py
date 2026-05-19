@@ -14,7 +14,6 @@ load_dotenv("scrapers/.env", override=True)
 
 # ── 도시 설정 (geo ID는 TripAdvisor URL에서 확인) ──────────────
 CITIES = [
-    {"name": "London",    "country": "UK",          "geo": 186338},
     {"name": "Paris",     "country": "France",      "geo": 187147},
     {"name": "Tokyo",     "country": "Japan",       "geo": 298184},
     {"name": "New York",  "country": "USA",         "geo": 60763},
@@ -24,6 +23,7 @@ CITIES = [
     {"name": "Barcelona", "country": "Spain",       "geo": 187497},
     {"name": "Rome",      "country": "Italy",       "geo": 187791},
     {"name": "Sydney",    "country": "Australia",   "geo": 255060},
+    {"name": "London",    "country": "UK",          "geo": 186338},  # 마지막 (세션 안정 후)
 ]
 
 PAGE_SIZE   = 30    # TripAdvisor 페이지당 업체 수
