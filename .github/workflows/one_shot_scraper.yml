@@ -1,0 +1,36 @@
+name: SMBkits One-Shot Scraper
+
+on:
+  schedule:
+    - cron: '0 18 * * *'   # 매일 18:00 UTC (1,500 RPD 무료 한도)
+  workflow_dispatch:
+
+jobs:
+  scrape:
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: pip install google-genai gspread google-auth python-dotenv
+
+      - name: Write Google credentials
+        run: echo '${{ secrets.GOOGLE_CREDENTIALS_JSON }}' > scrapers/credentials.json
+
+      - name: Run one-shot scraper
+        run: python -u scrapers/one_shot_scraper.py
+        env:
+          PYTHONUNBUFFERED: "1"
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          SHEET_ID: ${{ secrets.SHEET_ID }}
+          SHEET_NAME: ${{ secrets.SHEET_NAME }}
+          CREDS_FILE: scrapers/credentials.json
