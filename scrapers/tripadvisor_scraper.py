@@ -63,8 +63,9 @@ async def get_detail(page, url, city_name, country):
         "outreach_status": "", "last_sent_at": "", "scraper_done": "Y",
     }
     try:
-        await page.goto(url, wait_until="load", timeout=30000)
-        await page.wait_for_selector("h1", timeout=15000)
+        await page.goto(url, wait_until="domcontentloaded", timeout=30000)
+        await asyncio.sleep(3)
+        await page.wait_for_selector("h1", timeout=10000)
         await page.wait_for_timeout(random.randint(1500, 2500))
 
         # 이름
@@ -138,14 +139,18 @@ async def main():
     chrome_cookies = get_chrome_cookies()
 
     async with async_playwright() as p:
-        # 실제 Chrome 프로필 사용 → DataDome 완전 우회
-        CHROME_PROFILE = os.path.expandvars(r"%LOCALAPPDATA%\Google\Chrome\User Data")
-        context = await p.chromium.launch_persistent_context(
-            user_data_dir=CHROME_PROFILE,
-            channel="chrome",
+        browser = await p.chromium.launch(
             headless=False,
             args=["--disable-blink-features=AutomationControlled"],
         )
+        context = await browser.new_context(
+            user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36",
+            viewport={"width": 1280, "height": 800},
+            locale="en-US",
+        )
+        await context.add_init_script("Object.defineProperty(navigator, 'webdriver', {get: () => undefined})")
+        if chrome_cookies:
+            await context.add_cookies(chrome_cookies)
         page = await context.new_page()
         total = 0
 
@@ -157,10 +162,10 @@ async def main():
 
             for page_idx in range(MAX_PAGES):
                 offset = page_idx * PAGE_SIZE
-                await page.goto(list_url(city["geo"], offset), wait_until="load", timeout=30000)
-                # 레스토랑 링크 뜰 때까지 대기
+                await page.goto(list_url(city["geo"], offset), wait_until="domcontentloaded", timeout=30000)
+                await asyncio.sleep(4)
                 try:
-                    await page.wait_for_selector("a[href*='/Restaurant_Review']", timeout=15000)
+                    await page.wait_for_selector("a[href*='/Restaurant_Review']", timeout=10000)
                 except Exception:
                     html = await page.content()
                     with open(f"debug_{city['name']}_{page_idx}.html", "w", encoding="utf-8") as f:
@@ -219,7 +224,7 @@ async def main():
 
             print(f"  {city['name']} 완료: {city_count}개")
 
-        await context.close()
+        await browser.close()
     print(f"\n전체 완료 — {total}개 수집")
 
 if __name__ == "__main__":
