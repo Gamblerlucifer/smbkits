@@ -191,8 +191,11 @@ async def main():
                         pass
                     full = "https://www.tripadvisor.com" + href if href.startswith("/") else href
                     full = full.split("?")[0]
-                    if full not in existing and full not in seen:
-                        seen.add(full)
+                    # location ID 기준 중복 제거 (스폰서+일반 동일 업체 방지)
+                    m = re.search(r"-d(\d+)-", full)
+                    loc_id = m.group(1) if m else full
+                    if loc_id not in seen and full not in existing:
+                        seen.add(loc_id)
                         hrefs.append(full)
 
                 if not hrefs:
