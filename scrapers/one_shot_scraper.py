@@ -16,10 +16,10 @@ from google.oauth2.service_account import Credentials
 from dotenv import load_dotenv
 
 sys.stdout.reconfigure(encoding="utf-8", errors="replace")
-load_dotenv("scrapers/.env")
+load_dotenv("scrapers/.env", override=True)  # 시스템 환경변수보다 .env 우선
 
 DAILY_LIMIT = 490
-RPM_DELAY   = 5.0
+RPM_DELAY   = 10.0
 MODEL       = "gemini-3.1-flash-lite"
 
 SCOPES = [
