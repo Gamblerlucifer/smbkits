@@ -13,6 +13,7 @@ HEADERS = [
     "city", "country", "address",
     "email", "website", "phone",
     "rating", "review_count", "tripadvisor_url",
+    "strength_review", "weak_review",
     "outreach_status", "last_sent_at", "scraper_done",
 ]
 

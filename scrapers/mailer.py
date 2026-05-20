@@ -64,18 +64,39 @@ WARMUP = {
     6: (25, 35),
 }
 
+# 시트 컬럼 순서 (setup_sheet.py HEADERS 기준)
+# business_name(0) cuisine(1) price_range(2) city(3) country(4) address(5)
+# email(6) website(7) phone(8) rating(9) review_count(10) tripadvisor_url(11)
+# outreach_status(12) last_sent_at(13) scraper_done(14)
 COL = {
     "business_name":   0,
-    "city":            2,
-    "country":         3,
-    "website":         4,
+    "city":            3,
+    "country":         4,
     "email":           6,
-    "google_rating":   9,
+    "website":         7,
+    "rating":          9,
     "review_count":    10,
-    "negative_review": 12,
-    "sentiment_score": 13,
+    "strength_review": 12,
+    "weak_review":     13,
     "outreach_status": 14,
 }
+
+# 개인 메일 도메인 (우선 발송)
+PERSONAL_DOMAINS = {
+    "gmail.com", "googlemail.com",
+    "yahoo.com", "yahoo.co.jp", "yahoo.co.uk", "yahoo.fr", "yahoo.es",
+    "yahoo.it", "yahoo.com.au", "yahoo.com.hk", "yahoo.com.sg",
+    "hotmail.com", "hotmail.fr", "hotmail.co.uk", "hotmail.es", "hotmail.it",
+    "outlook.com", "outlook.fr", "outlook.es", "outlook.it",
+    "icloud.com", "me.com", "mac.com",
+    "live.com", "msn.com",
+    "protonmail.com", "proton.me",
+}
+
+def email_priority(email: str) -> int:
+    """0 = 개인 메일(우선), 1 = 비즈니스 메일"""
+    domain = email.lower().split("@")[-1] if "@" in email else ""
+    return 0 if domain in PERSONAL_DOMAINS else 1
 
 LOG_HEADERS = ["timestamp", "recipient", "sender_email", "sender_name", "sequence", "subject", "body_preview"]
 
@@ -154,20 +175,17 @@ def get_lang(country: str) -> str:
 
 def generate_email(lead: dict, sequence: str, sender_name: str = "James") -> dict | None:
     """Gemini로 개인화 이메일 생성 — 제목·내용 매번 다르게"""
-    name    = lead.get("business_name", "")
-    city    = lead.get("city", "")
-    country = lead.get("country", "")
-    rating  = lead.get("google_rating", "")
-    reviews = lead.get("review_count", "")
-    neg_rev = lead.get("negative_review", "")
-    lang    = get_lang(country)
+    name     = lead.get("business_name", "")
+    city     = lead.get("city", "")
+    country  = lead.get("country", "")
+    rating   = lead.get("rating", "")
+    reviews  = lead.get("review_count", "")
+    strength = lead.get("strength_review", "")
+    weak     = lead.get("weak_review", "")
+    lang     = get_lang(country)
     first_name = sender_name.split()[0]  # "James Harrison" → "James"
 
     if sequence == "d0":
-        neg_section = (
-            f"Recent negative review text: \"{neg_rev[:200]}\""
-            if neg_rev else "No negative review text available."
-        )
         prompt = f"""You are writing a cold outreach email on behalf of SMBkits (smbkits.com),
 a private AI reputation management tool for premium independent restaurants.
 
@@ -175,26 +193,31 @@ Sender: {sender_name} (sign off with first name only: {first_name})
 Target restaurant:
 - Name: {name}
 - Location: {city}, {country}
-- Google Rating: {rating} stars ({reviews} reviews)
-- {neg_section}
+- TripAdvisor Rating: {rating} stars ({reviews} reviews)
 - Write in: {lang}
 
-Write a SHORT, conversational cold email. Follow this exact flow:
-1. Opening: acknowledge their strong reputation ({rating} stars, {reviews} reviews) — make them feel seen (1-2 sentences)
-2. Reputation signal: mention that while reviewing their online presence, you came across a recent guest comment. Include a SHORT, softened quote in quotation marks — pick 3-5 words from the negative review text that are the least harsh (e.g. "waiting time felt a little long" or "portion felt slightly small"). Attribute it to "a recent Google review". Keep it neutral, not confrontational.
-3. Empathy: acknowledge that responding to every review thoughtfully while running a full kitchen and floor operation is genuinely difficult. (1 sentence)
-4. Soft offer: mention you put together a complimentary "Online Reputation & Response Profile" specifically for {name} — they just need to reply to this email and you'll send it over. No link, no signup.
-5. CTA: end with a simple low-friction ask — "If you'd like to take a look, just reply to this email."
-6. Do NOT include any sign-off or signature — it will be added automatically.
+Write a SHORT, direct cold email. Tone: peer-to-peer, not consultant-to-client. No marketing smell.
+
+Here is real data from their TripAdvisor reviews:
+- Rating: {rating} stars ({reviews} reviews)
+- Recent POSITIVE review: "{strength}"
+- Recent CRITICAL review: "{weak}"
+
+Follow this exact flow:
+1. Hook: reference a specific detail from the POSITIVE review to show you actually read it — not generic praise, one concrete observation. (1 sentence)
+2. Contrast: pivot naturally to the CRITICAL review — reference it as a specific guest experience, not an attack. Keep it factual and calm. (1-2 sentences)
+3. Stakes: one short sentence on why this kind of feedback, left unaddressed, quietly affects future bookings.
+4. Offer: you have a free response profile ready for {name} — just reply and you'll send it over. No link, no signup.
+5. Closing: one warm line — wish them a strong service, full house, good season. Varied each time.
+6. Do NOT include any sign-off or signature — added automatically.
 
 STRICT RULES:
-- Subject: personal, curiosity-driven. Never use: "partnership", "opportunity", "collaboration", "exciting"
-- Body: under 170 words, plain text, no bullet points, no bold
-- Line breaks between every paragraph
-- Never directly quote harsh review content — frame issues as professional observations
-- Never say "our AI could draft a reply" or push the website link as CTA
-- Sound like a real human consultant, not a marketer
-- Every email must use different wording and structure
+- Subject: specific to their actual reviews — not generic
+- Body: under 160 words, plain text, no bullet points, no bold
+- If strength or weak review is empty, fall back to a plausible fine dining observation (never mention portion sizes or price-value)
+- NEVER use: "local spots", "competitors", "stand out", "digital presence", "brand", "partnership", "opportunity"
+- Fine dining context: treat the restaurant as a serious culinary establishment
+- Every email must use completely different wording and structure
 
 Respond ONLY in this exact JSON format (no markdown):
 {{"subject": "...", "body": "..."}}"""
@@ -205,14 +228,14 @@ Respond ONLY in this exact JSON format (no markdown):
 Sender first name: {first_name} (sign off with {first_name} only — never use another name)
 Write in: {lang}
 
-Context: {first_name} emailed them 3 days ago about their Google reviews and smbkits.com.
+Context: {first_name} emailed them 3 days ago about their TripAdvisor reputation and smbkits.com.
 They haven't replied yet.
 
 RULES:
-- 2-3 sentences only
+- 2-3 sentences + one warm closing line
 - Casual, human tone
 - Reference the previous email naturally
-- No pressure
+- No pressure, no quotation marks around product names
 - Do NOT include any sign-off or signature
 - Different wording every time
 
@@ -225,13 +248,13 @@ Respond ONLY in JSON (no markdown):
 Sender first name: {first_name} (sign off with {first_name} only — never use another name)
 Write in: {lang}
 
-Context: Last follow-up. {reviews} Google reviews, {rating} star rating.
+Context: Last follow-up. {reviews} TripAdvisor reviews, {rating} star rating.
 {first_name} has emailed them twice already about smbkits.com.
 
 RULES:
-- 2-3 sentences only
+- 2-3 sentences + one warm closing line wishing them well
 - Mention one specific stat ({reviews} reviews OR {rating} stars)
-- Mention smbkits.com once
+- Mention smbkits.com once, no quotation marks around it
 - Friendly, no hard feelings
 - Do NOT include any sign-off or signature
 - Different wording every time
@@ -318,12 +341,11 @@ def main():
     # ── 테스트 발송 모드 (3개 계정 전부 발송) ───────────────────
     if args.test_email:
         fake_lead = {
-            "business_name":  "The Grand Table",
-            "city":           "London",
-            "country":        "United Kingdom",
-            "google_rating":  "4.6",
-            "review_count":   "892",
-            "negative_review": "waiting time was longer than expected and the portion felt small for the price.",
+            "business_name": "The Grand Table",
+            "city":          "London",
+            "country":       "UK",
+            "rating":        "4.6",
+            "review_count":  "892",
         }
         for account in SMTP_ACCOUNTS:
             print(f"[TEST] {account['name']} → {args.test_email}")
@@ -394,9 +416,15 @@ def main():
         elif status.startswith("d3:") and days_since(status) >= 7:
             d10_leads.append((i, row))
 
-    print(f"D0(신규): {len(d0_leads)}건 | D+3 대기: {len(d3_leads)}건 | D+10 대기: {len(d10_leads)}건\n")
+    # 개인 메일(gmail, yahoo 등) 우선 정렬
+    for lst in (d0_leads, d3_leads, d10_leads):
+        lst.sort(key=lambda x: email_priority(x[1][COL["email"]] if len(x[1]) > 6 else ""))
 
-    # 발송 큐: d10 → d3 → d0 우선순위
+    print(f"D0(신규): {len(d0_leads)}건 | D+3 대기: {len(d3_leads)}건 | D+10 대기: {len(d10_leads)}건")
+    personal_count = sum(1 for _, row in d0_leads if email_priority(row[COL["email"]] if len(row) > 6 else "") == 0)
+    print(f"D0 중 개인 메일(gmail·yahoo 등): {personal_count}건\n")
+
+    # 발송 큐: d10 → d3 → d0 우선순위 (각 목록 내 개인 메일 먼저)
     queue = (
         [(i, row, "d10") for i, row in d10_leads] +
         [(i, row, "d3")  for i, row in d3_leads]  +
@@ -421,12 +449,13 @@ def main():
             continue
 
         lead = {
-            "business_name":  row[COL["business_name"]]  if len(row) > 0  else "",
-            "city":           row[COL["city"]]            if len(row) > 2  else "",
-            "country":        row[COL["country"]]         if len(row) > 3  else "",
-            "google_rating":  row[COL["google_rating"]]   if len(row) > 9  else "",
-            "review_count":   row[COL["review_count"]]    if len(row) > 10 else "",
-            "negative_review":row[COL["negative_review"]] if len(row) > 12 else "",
+            "business_name":   row[COL["business_name"]]   if len(row) > 0  else "",
+            "city":            row[COL["city"]]             if len(row) > 3  else "",
+            "country":         row[COL["country"]]          if len(row) > 4  else "",
+            "rating":          row[COL["rating"]]           if len(row) > 9  else "",
+            "review_count":    row[COL["review_count"]]     if len(row) > 10 else "",
+            "strength_review": row[COL["strength_review"]]  if len(row) > 12 else "",
+            "weak_review":     row[COL["weak_review"]]      if len(row) > 13 else "",
         }
 
         print(f"[{sequence.upper()}] {lead['business_name']} → {to_email}")

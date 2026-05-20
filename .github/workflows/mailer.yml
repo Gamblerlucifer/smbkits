@@ -71,12 +71,12 @@ jobs:
         run: |
           HOUR=$(date -u +%H | sed 's/^0//')
           case $HOUR in
-            22) echo "COUNTRIES=Japan,Korea"                          >> $GITHUB_ENV ;;
-            23) echo "COUNTRIES=Taiwan"                               >> $GITHUB_ENV ;;
-            5)  echo "COUNTRIES=France,Italy,Spain,Germany"           >> $GITHUB_ENV ;;
-            6)  echo "COUNTRIES=United Kingdom"                       >> $GITHUB_ENV ;;
-            11) echo "COUNTRIES=United States"                        >> $GITHUB_ENV ;;
-            14) echo "COUNTRIES=United States"                        >> $GITHUB_ENV ;;
+            22) echo "COUNTRIES=Japan"                                >> $GITHUB_ENV ;;
+            23) echo "COUNTRIES=Hong Kong,Singapore"                  >> $GITHUB_ENV ;;
+            5)  echo "COUNTRIES=France,Italy,Spain,Belgium,Netherlands,Denmark,Sweden,Iceland" >> $GITHUB_ENV ;;
+            6)  echo "COUNTRIES=UK,Ireland,Malta"                     >> $GITHUB_ENV ;;
+            11) echo "COUNTRIES=USA,Canada"                           >> $GITHUB_ENV ;;
+            14) echo "COUNTRIES=USA,Australia"                        >> $GITHUB_ENV ;;
             *)  echo "COUNTRIES="                                     >> $GITHUB_ENV ;;
           esac
           echo "[Schedule] UTC hour=${HOUR} → COUNTRIES=${COUNTRIES}"

@@ -1,51 +1,95 @@
 """
 SMBkits — TripAdvisor Fine Dining Scraper
-파인다이닝 목록 → 페이지네이션 → 상세 페이지 → 추출 → 시트 저장
+파인다이닝 목록 → 페이지네이션 → 상세 페이지 → 추출 → 로컬 CSV 저장
 """
 
-import os, sys, re, asyncio, random, gspread
+import os, sys, re, asyncio, random, csv
 import browser_cookie3
 from playwright.async_api import async_playwright
-from google.oauth2.service_account import Credentials
 from dotenv import load_dotenv
 
 sys.stdout.reconfigure(encoding="utf-8", errors="replace")
-load_dotenv("scrapers/.env", override=True)
+load_dotenv(os.path.join(os.path.dirname(__file__), ".env"), override=True)
 
 # ── 도시 설정 (geo ID는 TripAdvisor URL에서 확인) ──────────────
 CITIES = [
-    {"name": "Paris",     "country": "France",      "geo": 187147},
-    {"name": "Tokyo",     "country": "Japan",       "geo": 298184},
-    {"name": "New York",  "country": "USA",         "geo": 60763},
-    {"name": "Singapore", "country": "Singapore",   "geo": 294260},
-    {"name": "Hong Kong", "country": "Hong Kong",   "geo": 294217},
-    {"name": "Dubai",     "country": "UAE",         "geo": 295424},
-    {"name": "Barcelona", "country": "Spain",       "geo": 187497},
-    {"name": "Rome",      "country": "Italy",       "geo": 187791},
-    {"name": "Sydney",    "country": "Australia",   "geo": 255060},
-    {"name": "London",    "country": "UK",          "geo": 186338},  # 마지막 (세션 안정 후)
+    {"name": "Tokyo",         "country": "Japan",        "geo": 298184},
+   # ── 1순위: 영어권 (북미) ────────────────────────────────────
+    {"name": "London",        "country": "UK",           "geo": 186338},
+    {"name": "New York",      "country": "USA",          "geo": 60763},
+    {"name": "Los Angeles",   "country": "USA",          "geo": 32655},
+    {"name": "Las Vegas",     "country": "USA",          "geo": 45963},
+    {"name": "San Francisco", "country": "USA",          "geo": 60713},
+    {"name": "Chicago",       "country": "USA",          "geo": 35805},
+    {"name": "Miami",         "country": "USA",          "geo": 34438},
+    {"name": "Toronto",       "country": "Canada",       "geo": 60963},
+    # ── 2순위: 영어권 (오세아니아) ──────────────────────────────
+    {"name": "Sydney",        "country": "Australia",    "geo": 255060},
+    {"name": "Melbourne",     "country": "Australia",    "geo": 255100},
+    # ── 2순위: 영어권 (아시아·중동 영어 비즈니스) ───────────────
+    {"name": "Singapore",     "country": "Singapore",    "geo": 294260},
+    {"name": "Hong Kong",     "country": "Hong Kong",    "geo": 294217},
+    {"name": "Dubai",         "country": "UAE",          "geo": 295424},
+    {"name": "Abu Dhabi",     "country": "UAE",          "geo": 297338},
+    # ── 2순위: 영어권 (유럽 영어 공용어) ────────────────────────
+    {"name": "Dublin",        "country": "Ireland",      "geo": 186605},
+    {"name": "Valletta",      "country": "Malta",        "geo": 190711},
+    # ── 3순위: 기타 언어권 (고영어구사율 유럽) ──────────────────
+    {"name": "Amsterdam",     "country": "Netherlands",  "geo": 188590},
+    {"name": "Copenhagen",    "country": "Denmark",      "geo": 189541},
+    {"name": "Stockholm",     "country": "Sweden",       "geo": 189850},
+    {"name": "Reykjavik",     "country": "Iceland",      "geo": 189952},
+    # ── 3순위: 기타 언어권 (유럽) ───────────────────────────────
+    {"name": "Paris",         "country": "France",       "geo": 187147},
+    {"name": "Barcelona",     "country": "Spain",        "geo": 187497},
+    {"name": "Madrid",        "country": "Spain",        "geo": 187514},
+    {"name": "Rome",          "country": "Italy",        "geo": 187791},
+    {"name": "Milan",         "country": "Italy",        "geo": 187849},
+    {"name": "Brussels",      "country": "Belgium",      "geo": 188671},
+    # ── 3순위: 기타 언어권 (동남아) ─────────────────────────────
+    {"name": "Bangkok",       "country": "Thailand",     "geo": 293916},
+    # ── 총알받이: 일본 (마지막 — 세션 말미 차단 흡수) ───────────
+    {"name": "Osaka",         "country": "Japan",        "geo": 294211},
 ]
 
-PAGE_SIZE   = 30    # TripAdvisor 페이지당 업체 수
-MAX_PAGES   = 10    # 도시당 최대 페이지 (도시당 300개)
-DELAY       = (3, 6)
+PAGE_SIZE = 30    # TripAdvisor 페이지당 업체 수
+MAX_PAGES = 10    # 도시당 최대 페이지 (도시당 300개)
+DELAY     = (1.5, 3)
 
-SCOPES = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
-creds = Credentials.from_service_account_file(
-    os.environ.get("CREDS_FILE", "scrapers/credentials.json"), scopes=SCOPES
-)
-gc    = gspread.authorize(creds)
-sheet = gc.open_by_key(os.environ["SHEET_ID"]).worksheet(os.environ["SHEET_NAME"])
+HEADERS = [
+    "business_name", "cuisine", "price_range",
+    "city", "country", "address",
+    "email", "website", "phone",
+    "rating", "review_count", "tripadvisor_url",
+    "strength_review", "weak_review",
+    "outreach_status", "last_sent_at", "scraper_done",
+]
 
-headers = sheet.row_values(1)
-def col(name): return headers.index(name) + 1
+CSV_PATH = os.path.join(os.path.dirname(__file__), "results.csv")
 
-# 이미 수집된 TripAdvisor URL 목록 (중복 방지)
-existing = set()
-for rec in sheet.get_all_records():
-    url = rec.get("tripadvisor_url", "")
-    if url: existing.add(url)
-print(f"기존 수집: {len(existing)}개\n")
+def load_existing() -> set:
+    """기존 CSV에서 수집된 URL 로드 (중복 방지)"""
+    existing = set()
+    if not os.path.exists(CSV_PATH):
+        return existing
+    with open(CSV_PATH, newline="", encoding="utf-8-sig") as f:
+        reader = csv.DictReader(f)
+        for row in reader:
+            url = row.get("tripadvisor_url", "").strip()
+            if url:
+                existing.add(url)
+    return existing
+
+def init_csv():
+    """CSV 없으면 헤더 생성"""
+    if not os.path.exists(CSV_PATH):
+        with open(CSV_PATH, "w", newline="", encoding="utf-8-sig") as f:
+            csv.writer(f).writerow(HEADERS)
+
+def append_csv(row: dict):
+    """CSV에 한 줄 즉시 append"""
+    with open(CSV_PATH, "a", newline="", encoding="utf-8-sig") as f:
+        csv.writer(f).writerow([row.get(h, "") for h in HEADERS])
 
 def list_url(geo, offset=0):
     return (
@@ -60,13 +104,12 @@ async def get_detail(page, url, city_name, country):
         "city": city_name,   "country": country, "address": "",
         "email": "", "website": "", "phone": "",
         "rating": "", "review_count": "", "tripadvisor_url": url,
+        "strength_review": "", "weak_review": "",
         "outreach_status": "", "last_sent_at": "", "scraper_done": "Y",
     }
     try:
         await page.goto(url, wait_until="domcontentloaded", timeout=30000)
-        await asyncio.sleep(3)
         await page.wait_for_selector("h1", timeout=10000)
-        await page.wait_for_timeout(random.randint(1500, 2500))
 
         # 이름
         el = await page.query_selector("h1")
@@ -82,7 +125,6 @@ async def get_detail(page, url, city_name, country):
         el = await page.query_selector("a[data-automation='restaurantsWebsiteButton']")
         if el:
             href = await el.get_attribute("href") or ""
-            # TripAdvisor redirect URL에서 실제 URL 추출
             m = re.search(r"url=([^&]+)", href)
             row["website"] = m.group(1) if m else href.split("?")[0]
 
@@ -111,6 +153,64 @@ async def get_detail(page, url, city_name, country):
         m = re.search(r'priceRange["\s:]+(\$+)', html)
         if m: row["price_range"] = m.group(1)
 
+        # 이메일 없으면 리뷰 추출 스킵
+        if not row["email"]:
+            return row
+
+        # 강점/약점 리뷰 추출
+        try:
+            # reviews-tab이 DOM에 생기길 기다린 뒤, 해당 요소로 스크롤 → lazy load 트리거
+            try:
+                await page.wait_for_selector("[data-test-target='reviews-tab']", timeout=12000)
+                tab_el = await page.query_selector("[data-test-target='reviews-tab']")
+                if tab_el:
+                    await tab_el.evaluate("el => el.scrollIntoView({block:'center'})")
+                else:
+                    await page.evaluate("window.scrollTo(0, document.body.scrollHeight * 0.6)")
+                await page.wait_for_selector("[data-automation='reviewCard']", timeout=12000)
+            except Exception:
+                # fallback: 페이지 중간까지 스크롤 후 재시도
+                await page.evaluate("window.scrollTo(0, document.body.scrollHeight * 0.6)")
+                try:
+                    await page.wait_for_selector("[data-automation='reviewCard']", timeout=6000)
+                except Exception:
+                    pass  # 리뷰 없는 업체
+
+            strength, weak = "", ""
+            cards = await page.query_selector_all("[data-automation='reviewCard']")
+            print(f"      리뷰카드: {len(cards)}개")
+
+            for card in cards[:20]:
+                title_el = await card.query_selector("svg[data-automation='bubbleRatingImage'] title")
+                stars = 0
+                if title_el:
+                    title_text = await title_el.evaluate("el => el.textContent")
+                    m2 = re.search(r'중\s*(\d+)', title_text)       # 한국어
+                    if m2:
+                        stars = int(m2.group(1))
+                    else:
+                        m2 = re.search(r'(\d+)\s*of\s*5', title_text)  # 영어
+                        if m2: stars = int(m2.group(1))
+
+                body_el = await card.query_selector("[data-test-target='review-body']")
+                if not body_el:
+                    continue
+                text = (await body_el.evaluate("el => el.innerText")).strip()
+                if len(text) < 15:
+                    continue
+
+                if stars >= 4 and not strength:
+                    strength = text[:250]
+                elif 1 <= stars <= 3 and not weak:
+                    weak = text[:250]
+                if strength and weak:
+                    break
+
+            row["strength_review"] = strength
+            row["weak_review"]     = weak
+        except Exception:
+            pass
+
     except Exception as e:
         print(f"    오류: {str(e)[:80]}")
 
@@ -136,6 +236,10 @@ def get_chrome_cookies():
         return []
 
 async def main():
+    init_csv()
+    existing = load_existing()
+    print(f"기존 수집: {len(existing)}개\n")
+
     chrome_cookies = get_chrome_cookies()
 
     async with async_playwright() as p:
@@ -170,7 +274,7 @@ async def main():
                     html = await page.content()
                     with open(f"debug_{city['name']}_{page_idx}.html", "w", encoding="utf-8") as f:
                         f.write(html)
-                    print(f"  페이지 {page_idx+1}: 결과 없음 → debug_{city['name']}_{page_idx}.html 저장")
+                    print(f"  페이지 {page_idx+1}: 결과 없음 → debug 저장")
                     break
 
                 # 목록에서 상세 링크 수집
@@ -181,7 +285,6 @@ async def main():
                     href = await link.get_attribute("href")
                     if not href or "/Restaurant_Review" not in href:
                         continue
-                    # 스폰서 링크 제외
                     try:
                         card = await link.evaluate_handle("el => el.closest('[data-test]') || el.parentElement.parentElement.parentElement")
                         card_text = await card.evaluate("el => el.innerText")
@@ -190,8 +293,7 @@ async def main():
                     except Exception:
                         pass
                     full = "https://www.tripadvisor.com" + href if href.startswith("/") else href
-                    full = full.split("?")[0]
-                    # location ID 기준 중복 제거 (스폰서+일반 동일 업체 방지)
+                    full = full.split("?")[0].split("#")[0]
                     m = re.search(r"-d(\d+)-", full)
                     loc_id = m.group(1) if m else full
                     if loc_id not in seen and full not in existing:
@@ -207,14 +309,7 @@ async def main():
                 for url in hrefs:
                     row = await get_detail(page, url, city["name"], city["country"])
                     existing.add(url)
-
-                    sheet.append_row([row[h] for h in [
-                        "business_name", "cuisine", "price_range",
-                        "city", "country", "address",
-                        "email", "website", "phone",
-                        "rating", "review_count", "tripadvisor_url",
-                        "outreach_status", "last_sent_at", "scraper_done",
-                    ]])
+                    append_csv(row)  # 즉시 로컬 저장
 
                     status = "O" if row["email"] else "-"
                     print(f"    [{status}] {row['business_name'][:30]:<30} {row['email'] or '이메일없음'}")
@@ -228,7 +323,7 @@ async def main():
             print(f"  {city['name']} 완료: {city_count}개")
 
         await browser.close()
-    print(f"\n전체 완료 — {total}개 수집")
+    print(f"\n전체 완료 — {total}개 수집 → {CSV_PATH}")
 
 if __name__ == "__main__":
     asyncio.run(main())
