@@ -185,77 +185,79 @@ def generate_email(lead: dict, sequence: str, sender_name: str = "James") -> dic
     lang     = get_lang(country)
     first_name = sender_name.split()[0]  # "James Harrison" → "James"
 
-    if sequence == "d0":
-        prompt = f"""You are writing a cold outreach email on behalf of SMBkits (smbkits.com),
-a private AI reputation management tool for premium independent restaurants.
+    if sequence == "f":
+        prompt = f"""You are writing a cold outreach email on behalf of SMBkits (smbkits.com).
 
 Sender: {sender_name} (sign off with first name only: {first_name})
-Target restaurant:
-- Name: {name}
-- Location: {city}, {country}
-- TripAdvisor Rating: {rating} stars ({reviews} reviews)
-- Write in: {lang}
-
-Write a SHORT, direct cold email. Tone: peer-to-peer, not consultant-to-client. No marketing smell.
-
-Here is real data from their TripAdvisor reviews:
+Target restaurant: {name}, {city}, {country}
+TripAdvisor data:
 - Rating: {rating} stars ({reviews} reviews)
 - Recent POSITIVE review: "{strength}"
 - Recent CRITICAL review: "{weak}"
+Write in: {lang}
 
-Follow this exact flow:
-1. Hook: reference a specific detail from the POSITIVE review to show you actually read it — not generic praise, one concrete observation. (1 sentence)
-2. Contrast: pivot naturally to the CRITICAL review — reference it as a specific guest experience, not an attack. Keep it factual and calm. (1-2 sentences)
-3. Stakes: one short sentence on why this kind of feedback, left unaddressed, quietly affects future bookings.
-4. Offer: you have a free response profile ready for {name} — just reply and you'll send it over. No link, no signup.
-5. Closing: one warm line — wish them a strong service, full house, good season. Varied each time.
-6. Do NOT include any sign-off or signature — added automatically.
+Follow this exact structure:
+
+1. REPUTATION SNAPSHOT (2 sentences): State their TripAdvisor standing factually — rating, review count, one concrete thing guests consistently praise from the positive review. No flattery, just what the data shows.
+
+2. THE QUESTION (2 sentences): Reference the critical review as a real guest experience — describe what that guest said, then ask what they think about it. Conversational, not accusatory. Example tone: "A guest recently mentioned X. Curious how you usually handle that kind of feedback."
+
+3. EXAMPLE RESPONSE (2-3 sentences): Show one concrete reply they could give to that critical review right now. Introduce it naturally — "Something like this might work:" — then write the actual response in their voice. Make it specific to the review, not a template.
+
+4. CONTEXT (1 sentence): Mention that SMBkits is currently being built around this — not launched yet, just being developed.
+
+5. CTA (1 sentence): If this is relevant to them, just reply. No link, no form, no pressure.
 
 STRICT RULES:
-- Subject: specific to their actual reviews — not generic
-- Body: under 160 words, plain text, no bullet points, no bold
-- If strength or weak review is empty, fall back to a plausible fine dining observation (never mention portion sizes or price-value)
-- NEVER use: "local spots", "competitors", "stand out", "digital presence", "brand", "partnership", "opportunity"
-- Fine dining context: treat the restaurant as a serious culinary establishment
+- Total body: under 200 words
+- Plain text only, no bullet points, no bold
+- Tone: peer-to-peer, like someone who genuinely read their reviews — not a vendor
+- If strength or weak review is empty, use a plausible fine dining scenario (never mention portion sizes or price-value)
+- NEVER use: "stand out", "brand", "partnership", "opportunity", "digital presence", "reputation management", "local spots"
+- Subject line: specific and curious — not salesy
 - Every email must use completely different wording and structure
 
 Respond ONLY in this exact JSON format (no markdown):
 {{"subject": "...", "body": "..."}}"""
 
-    elif sequence == "d3":
-        prompt = f"""Write a very short follow-up cold email for {name} in {city}.
+    elif sequence == "s":
+        prompt = f"""Write a short follow-up email for {name} in {city}.
 
-Sender first name: {first_name} (sign off with {first_name} only — never use another name)
+Sender first name: {first_name} (sign off with {first_name} only)
 Write in: {lang}
 
-Context: {first_name} emailed them 3 days ago about their TripAdvisor reputation and smbkits.com.
-They haven't replied yet.
+Context: {first_name} sent them an email 3 days ago — it included a specific TripAdvisor review observation and a sample response. They haven't replied.
+
+Structure:
+1. Reference the previous email briefly — not "just following up", but a one-line callback to the actual content (the review, the example response). (1 sentence)
+2. Add one new thought or observation — something small they might find genuinely interesting about their TripAdvisor profile or how guests talk about them. (1-2 sentences)
+3. Soft CTA — still building the service, still curious if it's relevant to them. (1 sentence)
 
 RULES:
-- 2-3 sentences + one warm closing line
-- Casual, human tone
-- Reference the previous email naturally
-- No pressure, no quotation marks around product names
+- Under 100 words total
+- Casual and direct — no pressure, no pitch language
 - Do NOT include any sign-off or signature
 - Different wording every time
 
 Respond ONLY in JSON (no markdown):
 {{"subject": "...", "body": "..."}}"""
 
-    elif sequence == "d10":
-        prompt = f"""Write a final short breakup-style cold email for {name} in {city}.
+    elif sequence == "t":
+        prompt = f"""Write a final short email for {name} in {city}. This is the last one.
 
-Sender first name: {first_name} (sign off with {first_name} only — never use another name)
+Sender first name: {first_name} (sign off with {first_name} only)
 Write in: {lang}
+TripAdvisor: {rating} stars, {reviews} reviews
 
-Context: Last follow-up. {reviews} TripAdvisor reviews, {rating} star rating.
-{first_name} has emailed them twice already about smbkits.com.
+Structure:
+1. Acknowledge this is the last email — briefly, no drama. (1 sentence)
+2. Leave them with one specific, genuinely useful observation about their TripAdvisor profile — something concrete from the data ({reviews} reviews, {rating} stars) that they can think about regardless of whether they use SMBkits. (2 sentences)
+3. Warm close — wish them well, mention smbkits.com once as a passing reference if they're ever curious. (1 sentence)
 
 RULES:
-- 2-3 sentences + one warm closing line wishing them well
-- Mention one specific stat ({reviews} reviews OR {rating} stars)
-- Mention smbkits.com once, no quotation marks around it
-- Friendly, no hard feelings
+- Under 100 words
+- Friendly, zero pressure
+- No hard feelings tone
 - Do NOT include any sign-off or signature
 - Different wording every time
 
@@ -384,7 +386,7 @@ def main():
     rows      = all_rows[1:]
 
     # 시퀀스별 리드 분류
-    d0_leads, d3_leads, d10_leads = [], [], []
+    f_leads, s_leads, t_leads = [], [], []
 
     for i, row in enumerate(rows):
         email   = row[COL["email"]]           if len(row) > 6  else ""
@@ -398,38 +400,39 @@ def main():
         if target_countries and country not in target_countries:
             continue
 
-        # 이메일 시퀀스 미시작 상태 — 스크래퍼 상태값(enriched/pending 등) 포함
-        is_new = (not status) or (status not in ("",) and not any(
-            status.startswith(p) for p in ("d0:", "d3:", "d10:", "sending:")
-        ))
+        # 이메일 시퀀스 분류 — f(first) → s(second) → t(third) 라운드 기반
+        is_new = (not status) or not any(
+            status.startswith(p) for p in ("f:", "s:", "t:", "sending:")
+        )
 
         if is_new:
-            d0_leads.append((i, row))
+            f_leads.append((i, row))
         elif status.startswith("sending:") and hours_since_sending(status) >= 2:
-            # 2시간 이상 sending 상태 = 크래시로 멈춘 것 → d0 재시도
-            d0_leads.append((i, row))
+            # 2시간 이상 sending = 크래시 → f 재시도
+            f_leads.append((i, row))
         elif status.startswith("sending:"):
-            # 2시간 미만 = 다른 인스턴스가 처리 중 → 스킵
+            # 2시간 미만 = 다른 인스턴스 처리 중 → 스킵
             continue
-        elif status.startswith("d0:") and days_since(status) >= 3:
-            d3_leads.append((i, row))
-        elif status.startswith("d3:") and days_since(status) >= 7:
-            d10_leads.append((i, row))
+        elif status.startswith("f:"):
+            s_leads.append((i, row))
+        elif status.startswith("s:"):
+            t_leads.append((i, row))
 
     # 개인 메일(gmail, yahoo 등) 우선 정렬
-    for lst in (d0_leads, d3_leads, d10_leads):
+    for lst in (f_leads, s_leads, t_leads):
         lst.sort(key=lambda x: email_priority(x[1][COL["email"]] if len(x[1]) > 6 else ""))
 
-    print(f"D0(신규): {len(d0_leads)}건 | D+3 대기: {len(d3_leads)}건 | D+10 대기: {len(d10_leads)}건")
-    personal_count = sum(1 for _, row in d0_leads if email_priority(row[COL["email"]] if len(row) > 6 else "") == 0)
-    print(f"D0 중 개인 메일(gmail·yahoo 등): {personal_count}건\n")
+    print(f"1st(신규): {len(f_leads)}건 | 2nd 대기: {len(s_leads)}건 | 3rd 대기: {len(t_leads)}건")
+    personal_count = sum(1 for _, row in f_leads if email_priority(row[COL["email"]] if len(row) > 6 else "") == 0)
+    print(f"1st 중 개인 메일(gmail·yahoo 등): {personal_count}건\n")
 
-    # 발송 큐: d10 → d3 → d0 우선순위 (각 목록 내 개인 메일 먼저)
-    queue = (
-        [(i, row, "d10") for i, row in d10_leads] +
-        [(i, row, "d3")  for i, row in d3_leads]  +
-        [(i, row, "d0")  for i, row in d0_leads]
-    )
+    # 발송 큐: 라운드 순서 — f 잔여 있으면 f만, 없으면 s만, 없으면 t만
+    if f_leads:
+        queue = [(i, row, "f") for i, row in f_leads]
+    elif s_leads:
+        queue = [(i, row, "s") for i, row in s_leads]
+    else:
+        queue = [(i, row, "t") for i, row in t_leads]
 
     sent_count = {acc["email"]: 0 for acc in SMTP_ACCOUNTS}
     total_sent = 0

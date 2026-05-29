@@ -17,6 +17,10 @@ on:
     - cron: '43 11 * * 2,3,4'  # → US East 화/수/목
     # US West PDT UTC-7: 07:43 local = 14:43 UTC 당일
     - cron: '43 14 * * 2,3,4'  # → US West 화/수/목
+    # UAE UTC+4: 07:43 local = 03:43 UTC 당일
+    - cron: '43 3  * * 2,3,4'  # → UAE 화/수/목
+    # Australia AEST UTC+10: 07:43 local = 전날 21:43 UTC
+    - cron: '43 21 * * 1,2,3'  # → Australia 화/수/목
   workflow_dispatch:
     inputs:
       week:
@@ -76,7 +80,9 @@ jobs:
             5)  echo "COUNTRIES=France,Italy,Spain,Belgium,Netherlands,Denmark,Sweden,Iceland" >> $GITHUB_ENV ;;
             6)  echo "COUNTRIES=UK,Ireland,Malta"                     >> $GITHUB_ENV ;;
             11) echo "COUNTRIES=USA,Canada"                           >> $GITHUB_ENV ;;
-            14) echo "COUNTRIES=USA,Australia"                        >> $GITHUB_ENV ;;
+            14) echo "COUNTRIES=USA"                                  >> $GITHUB_ENV ;;
+            3)  echo "COUNTRIES=UAE"                                  >> $GITHUB_ENV ;;
+            21) echo "COUNTRIES=Australia"                            >> $GITHUB_ENV ;;
             *)  echo "COUNTRIES="                                     >> $GITHUB_ENV ;;
           esac
           echo "[Schedule] UTC hour=${HOUR} → COUNTRIES=${COUNTRIES}"
