@@ -37,6 +37,8 @@ jobs:
           SMTP_JAMES_PW=${{ secrets.SMTP_JAMES_PW }}
           SMTP_ALEX_PW=${{ secrets.SMTP_ALEX_PW }}
           SMTP_SARAH_PW=${{ secrets.SMTP_SARAH_PW }}
+          TELEGRAM_TOKEN=${{ secrets.TELEGRAM_TOKEN }}
+          TELEGRAM_CHAT_ID=${{ secrets.TELEGRAM_CHAT_ID }}
           EOF
 
       - name: Run inbox monitor

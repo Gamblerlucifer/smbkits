@@ -9,7 +9,7 @@ Usage:
     python scrapers/inbox_monitor.py --dry-run
 """
 
-import os, sys, imaplib, email, re, csv, time, argparse
+import os, sys, imaplib, email, re, csv, time, argparse, requests
 from email.header import decode_header
 from datetime import datetime, timezone
 import gspread
@@ -64,6 +64,17 @@ AUTO_REPLY_SUBJECTS = [
     "자동 응답",
     "congés",
     "fermé",
+    "office is closed",
+    "reservations office",
+    "closed now",
+    "spring holidays",
+    "bank holiday",
+    "public holiday",
+    "on leave",
+    "currently unavailable",
+    "will return",
+    "back in the office",
+    "not in the office",
 ]
 
 
@@ -138,9 +149,8 @@ def check_inbox(account: dict, delete: bool = False) -> dict:
         mail.login(account["email"], account["pw"])
         mail.select("INBOX")
 
-        # 오늘 이후 메일만
-        today = datetime.now().strftime("%d-%b-%Y")
-        _, data = mail.search(None, f'(SINCE "{today}")')
+        # 미읽음 전체 스캔
+        _, data = mail.search(None, "ALL")
         ids = data[0].split()
 
         print(f"  [{account['name']}] {len(ids)}개 메일 확인")
@@ -187,6 +197,21 @@ def check_inbox(account: dict, delete: bool = False) -> dict:
         print(f"  [{account['name']}] IMAP 오류: {e}")
 
     return results
+
+
+def send_telegram(text: str):
+    token   = os.getenv("TELEGRAM_TOKEN", "")
+    chat_id = os.getenv("TELEGRAM_CHAT_ID", "")
+    if not token or not chat_id:
+        return
+    try:
+        requests.post(
+            f"https://api.telegram.org/bot{token}/sendMessage",
+            json={"chat_id": chat_id, "text": text, "parse_mode": "HTML"},
+            timeout=10,
+        )
+    except Exception as e:
+        print(f"텔레그램 전송 오류: {e}")
 
 
 def get_sheet():
@@ -278,6 +303,17 @@ def main():
         print(f"\nSheets 바운스 업데이트 중...")
         sheet = get_sheet()
         mark_bounced(sheet, bounced_emails, args.dry_run)
+
+    # 텔레그램 알림
+    if all_real_replies:
+        msg = f"📬 <b>SMBkits 답장 {len(all_real_replies)}건</b>\n\n"
+        for r in all_real_replies:
+            msg += f"▸ <b>{r['account']}</b>\n"
+            msg += f"  발신: {r['sender'][:50]}\n"
+            msg += f"  제목: {r['subject'][:60]}\n\n"
+        send_telegram(msg)
+    elif all_bounces:
+        send_telegram(f"✅ SMBkits 모니터 완료\n바운스 {len(all_bounces)}건 처리, 실제 답장 없음")
 
     print(f"\n완료.")
 
