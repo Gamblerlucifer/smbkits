@@ -129,8 +129,8 @@ def get_email_body(msg) -> str:
     return body[:2000]
 
 
-def check_inbox(account: dict) -> dict:
-    """IMAP으로 받은편지함 체크 — 오늘 받은 메일 분류"""
+def check_inbox(account: dict, delete: bool = False) -> dict:
+    """IMAP으로 받은편지함 체크 — 오늘 받은 메일 분류 + 옵션으로 바운스/자동답장 삭제"""
     results = {"bounces": [], "auto_replies": [], "real_replies": []}
 
     try:
@@ -160,11 +160,15 @@ def check_inbox(account: dict) -> dict:
                     "subject":   subject,
                     "recipient": recipient,
                 })
+                if delete:
+                    mail.store(uid, "+FLAGS", "\\Deleted")
             elif is_auto_reply(subject):
                 results["auto_replies"].append({
                     "sender":  sender,
                     "subject": subject,
                 })
+                if delete:
+                    mail.store(uid, "+FLAGS", "\\Deleted")
             else:
                 results["real_replies"].append({
                     "sender":  sender,
@@ -172,6 +176,10 @@ def check_inbox(account: dict) -> dict:
                     "preview": body[:300],
                     "account": account["name"],
                 })
+
+        if delete:
+            mail.expunge()
+            print(f"  [{account['name']}] 바운스/자동답장 삭제 완료")
 
         mail.logout()
 
@@ -220,6 +228,7 @@ def mark_bounced(sheet, bounced_emails: list[str], dry_run: bool):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--dry-run", action="store_true")
+    parser.add_argument("--delete",  action="store_true", help="바운스/자동답장 자동 삭제")
     args = parser.parse_args()
 
     print(f"=== SMBkits 받은편지함 모니터 {datetime.now().strftime('%Y-%m-%d %H:%M')} ===\n")
@@ -230,7 +239,7 @@ def main():
 
     for account in ACCOUNTS:
         print(f"[{account['name']}] 체크 중...")
-        res = check_inbox(account)
+        res = check_inbox(account, delete=args.delete)
         all_bounces      += res["bounces"]
         all_auto_replies += res["auto_replies"]
         all_real_replies += res["real_replies"]

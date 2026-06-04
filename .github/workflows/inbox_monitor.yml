@@ -40,6 +40,6 @@ jobs:
           EOF
 
       - name: Run inbox monitor
-        run: python -u scrapers/inbox_monitor.py
+        run: python -u scrapers/inbox_monitor.py --delete
         env:
           PYTHONUNBUFFERED: "1"
