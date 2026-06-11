@@ -19,7 +19,7 @@ load_dotenv(os.path.join(os.path.dirname(__file__), ".env"), override=True)
 
 CSV_PATH    = os.path.join(os.path.dirname(__file__), "results.csv")
 GEMINI_KEY  = os.getenv("GEMINI_API_KEY")
-MODEL       = "gemini-2.0-flash"
+MODEL       = "gemini-3.1-flash-lite"
 
 gemini = genai.Client(api_key=GEMINI_KEY)
 
@@ -43,8 +43,77 @@ def get_chrome_cookies():
         return []
 
 
-async def scrape_reviews(url: str) -> dict:
+async def scrape_one(page, url: str) -> dict:
+    await page.goto(url, wait_until="domcontentloaded", timeout=30000)
+    await page.wait_for_selector("h1", timeout=20000)
+
+    # 레스토랑 기본 정보
+    name = await page.evaluate("() => document.querySelector('h1')?.innerText || ''")
+
+    # 평점
+    rating = ""
+    for sel in ["[data-automation='bubbleRatingValue']", "[class*='biGQs _P fiohW uuBRH']", "span.ZDEqb"]:
+        el = await page.query_selector(sel)
+        if el:
+            rating = (await el.evaluate("el => el.innerText")).strip()
+            if rating: break
+
+    # 리뷰 수
+    review_count = ""
+    for sel in ["[data-automation='reviewCount']", "[class*='biGQs _P pZUbB KxBGd']", "span.IcelI"]:
+        el = await page.query_selector(sel)
+        if el:
+            review_count = (await el.evaluate("el => el.innerText")).strip()
+            if review_count: break
+
+    # 리뷰 로드
+    try:
+        await page.wait_for_selector("[data-test-target='reviews-tab']", timeout=12000)
+        tab = await page.query_selector("[data-test-target='reviews-tab']")
+        if tab:
+            await tab.evaluate("el => el.scrollIntoView({block:'center'})")
+        await page.wait_for_selector("[data-automation='reviewCard']", timeout=12000)
+    except Exception:
+        await page.evaluate("window.scrollTo(0, document.body.scrollHeight * 0.6)")
+        try:
+            await page.wait_for_selector("[data-automation='reviewCard']", timeout=6000)
+        except Exception:
+            pass
+
+    # 리뷰 최대 10개 수집
+    cards = await page.query_selector_all("[data-automation='reviewCard']")
+    reviews = []
+    for card in cards[:10]:
+        title_el = await card.query_selector("svg[data-automation='bubbleRatingImage'] title")
+        stars = 0
+        if title_el:
+            t = await title_el.evaluate("el => el.textContent")
+            m = re.search(r'(\d+)\s*of\s*5|중\s*(\d+)', t)
+            if m:
+                stars = int(m.group(1) or m.group(2))
+        body_el = await card.query_selector("[data-test-target='review-body']")
+        if not body_el:
+            continue
+        text = (await body_el.evaluate("el => el.innerText")).strip()
+        if len(text) >= 20:
+            reviews.append({"stars": stars, "text": text[:400]})
+
+    positives = [r for r in reviews if r["stars"] >= 4]
+    negatives = [r for r in reviews if 1 <= r["stars"] <= 3]
+
+    return {
+        "name": name.strip(),
+        "rating": rating.strip(),
+        "review_count": review_count.strip(),
+        "positives": positives[:3],
+        "negatives": negatives[:3],
+    }
+
+
+async def scrape_multiple(urls: list[str]) -> list[dict | None]:
+    """브라우저를 한 번만 띄우고 URL만 바꿔가며 순차 스크래핑 (재실행으로 인한 차단 회피)"""
     cookies = get_chrome_cookies()
+    results = []
     async with async_playwright() as p:
         browser = await p.chromium.launch(
             headless=False,
@@ -60,60 +129,23 @@ async def scrape_reviews(url: str) -> dict:
             await ctx.add_cookies(cookies)
         page = await ctx.new_page()
 
-        await page.goto(url, wait_until="domcontentloaded", timeout=30000)
-        await page.wait_for_selector("h1", timeout=10000)
+        # 워밍업: 트립어드바이저 메인에 먼저 진입해 잠시 머문 뒤 실제 페이지들로 이동 (DataDome 회피)
+        await page.goto("https://www.tripadvisor.com/", wait_until="domcontentloaded", timeout=30000)
+        await page.wait_for_timeout(4000)
 
-        # 레스토랑 기본 정보
-        name = await page.evaluate("() => document.querySelector('h1')?.innerText || ''")
-        rating_el = await page.query_selector("[class*='biGQs _P fiohW uuBRH']")
-        rating = await rating_el.evaluate("el => el.innerText") if rating_el else ""
-        review_count_el = await page.query_selector("[class*='biGQs _P pZUbB KxBGd']")
-        review_count = await review_count_el.evaluate("el => el.innerText") if review_count_el else ""
-
-        # 리뷰 로드
-        try:
-            await page.wait_for_selector("[data-test-target='reviews-tab']", timeout=12000)
-            tab = await page.query_selector("[data-test-target='reviews-tab']")
-            if tab:
-                await tab.evaluate("el => el.scrollIntoView({block:'center'})")
-            await page.wait_for_selector("[data-automation='reviewCard']", timeout=12000)
-        except Exception:
-            await page.evaluate("window.scrollTo(0, document.body.scrollHeight * 0.6)")
+        for i, url in enumerate(urls):
             try:
-                await page.wait_for_selector("[data-automation='reviewCard']", timeout=6000)
-            except Exception:
-                pass
-
-        # 리뷰 최대 10개 수집
-        cards = await page.query_selector_all("[data-automation='reviewCard']")
-        reviews = []
-        for card in cards[:10]:
-            title_el = await card.query_selector("svg[data-automation='bubbleRatingImage'] title")
-            stars = 0
-            if title_el:
-                t = await title_el.evaluate("el => el.textContent")
-                m = re.search(r'(\d+)\s*of\s*5|중\s*(\d+)', t)
-                if m:
-                    stars = int(m.group(1) or m.group(2))
-            body_el = await card.query_selector("[data-test-target='review-body']")
-            if not body_el:
-                continue
-            text = (await body_el.evaluate("el => el.innerText")).strip()
-            if len(text) >= 20:
-                reviews.append({"stars": stars, "text": text[:400]})
+                data = await scrape_one(page, url)
+                results.append(data)
+            except Exception as e:
+                print(f"  실패: {url} - {e}")
+                results.append(None)
+            if i < len(urls) - 1:
+                await page.wait_for_timeout(3000)
 
         await browser.close()
 
-    positives = [r for r in reviews if r["stars"] >= 4]
-    negatives = [r for r in reviews if 1 <= r["stars"] <= 3]
-
-    return {
-        "name": name.strip(),
-        "rating": rating.strip(),
-        "review_count": review_count.strip(),
-        "positives": positives[:3],
-        "negatives": negatives[:3],
-    }
+    return results
 
 
 # ─── Gemini로 응대 예시 생성 ──────────────────────────────────────────────────
@@ -238,42 +270,45 @@ def build_html(data: dict, responses: dict) -> str:
 # ─── 메인 ─────────────────────────────────────────────────────────────────────
 async def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--url",  type=str, default="", help="TripAdvisor URL")
-    parser.add_argument("--name", type=str, default="", help="레스토랑 이름 (CSV 검색)")
+    parser.add_argument("--url",  type=str, nargs="+", default=[], help="TripAdvisor URL (복수 가능)")
+    parser.add_argument("--name", type=str, nargs="+", default=[], help="레스토랑 이름 (CSV 검색, 복수 가능)")
     args = parser.parse_args()
 
-    url = args.url
+    urls = list(args.url)
 
-    if not url and args.name:
-        row = find_in_csv(args.name)
+    for nm in args.name:
+        row = find_in_csv(nm)
         if row:
-            url = row.get("tripadvisor_url", "")
-            print(f"CSV에서 찾음: {row['business_name']} → {url}")
+            urls.append(row.get("tripadvisor_url", ""))
+            print(f"CSV에서 찾음: {row['business_name']} → {row.get('tripadvisor_url','')}")
         else:
-            print(f"CSV에서 '{args.name}' 찾을 수 없음")
-            return
+            print(f"CSV에서 '{nm}' 찾을 수 없음")
 
-    if not url:
+    if not urls:
         print("--url 또는 --name 을 입력하세요")
         return
 
-    print(f"스크래핑 중: {url}")
-    data = await scrape_reviews(url)
-    print(f"  {data['name']} | {data['rating']} | {data['review_count']}")
-    print(f"  긍정 리뷰: {len(data['positives'])}개 | 부정 리뷰: {len(data['negatives'])}개")
+    print(f"스크래핑 중: {len(urls)}개 URL (브라우저 1회 실행)")
+    results = await scrape_multiple(urls)
 
-    print("Gemini 응대 생성 중...")
-    responses = generate_responses(data)
+    for data in results:
+        if data is None:
+            continue
+        print(f"\n  {data['name']} | {data['rating']} | {data['review_count']}")
+        print(f"  긍정 리뷰: {len(data['positives'])}개 | 부정 리뷰: {len(data['negatives'])}개")
 
-    html = build_html(data, responses)
+        print("  Gemini 응대 생성 중...")
+        responses = generate_responses(data)
 
-    # 결과 저장
-    out_path = os.path.join(os.path.dirname(__file__), f"profile_{data['name'][:20].replace(' ','_')}.html")
-    with open(out_path, "w", encoding="utf-8") as f:
-        f.write(html)
+        html = build_html(data, responses)
 
-    print(f"\n완료 → {out_path}")
-    print("브라우저에서 열어 확인 후 Gmail에 붙여넣기 하세요.")
+        out_path = os.path.join(os.path.dirname(__file__), f"profile_{data['name'][:20].replace(' ','_')}.html")
+        with open(out_path, "w", encoding="utf-8") as f:
+            f.write(html)
+
+        print(f"  완료 → {out_path}")
+
+    print("\n전체 완료. 브라우저에서 열어 확인 후 Gmail에 붙여넣기 하세요.")
 
 
 if __name__ == "__main__":
