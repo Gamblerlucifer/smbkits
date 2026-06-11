@@ -259,6 +259,40 @@ def get_sheet():
     return gc.open_by_key(os.getenv("SHEET_ID")).worksheet(os.getenv("SHEET_NAME"))
 
 
+def extract_email_from_sender(sender: str) -> str:
+    """'Name <email@domain.com>' 또는 'email@domain.com' 형식에서 이메일 주소만 추출"""
+    m = re.search(r'([a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,})', sender)
+    return m.group(1).lower() if m else ""
+
+
+def mark_replied(sheet, replied_emails: list[str], dry_run: bool):
+    """실제 답장이 온 리드는 outreach_status = replied 로 표시 → 후속(s/t) 메일 발송 제외"""
+    if not replied_emails:
+        return
+
+    all_rows = sheet.get_all_values()
+    header   = all_rows[0]
+    email_col  = header.index("email")
+    status_col = header.index("outreach_status")
+
+    replied_set = {e.lower().strip() for e in replied_emails if e}
+    updates = []
+
+    for i, row in enumerate(all_rows[1:], start=2):
+        addr = row[email_col].lower().strip() if len(row) > email_col else ""
+        if addr in replied_set:
+            current = row[status_col] if len(row) > status_col else ""
+            if current != "replied":
+                updates.append({"range": f"O{i}", "values": [["replied"]]})
+                print(f"  replied → {addr}")
+
+    if updates and not dry_run:
+        sheet.batch_update(updates)
+        print(f"  Sheets {len(updates)}건 replied 업데이트 완료")
+    elif dry_run:
+        print(f"  [DRY RUN] {len(updates)}건 replied 처리 예정")
+
+
 def mark_bounced(sheet, bounced_emails: list[str], dry_run: bool):
     """Sheets에서 바운스된 이메일 주소 찾아서 status = bounced 표시"""
     if not bounced_emails:
@@ -310,6 +344,10 @@ def main():
     # 바운스된 원래 수신자 이메일 목록
     bounced_emails = [b["recipient"] for b in all_bounces if b["recipient"]]
 
+    # 실제 답장이 온 발신자 이메일 목록 → 후속 메일 발송 제외
+    replied_emails = [extract_email_from_sender(r["sender"]) for r in all_real_replies]
+    replied_emails = [e for e in replied_emails if e]
+
     print(f"\n── 결과 ──────────────────────────────")
     print(f"바운스:    {len(all_bounces)}건")
     print(f"자동답장:  {len(all_auto_replies)}건")
@@ -335,11 +373,12 @@ def main():
             print(f"  제목:   {r['subject']}")
             print(f"  내용:   {r['preview'][:200]}")
 
-    # Sheets 바운스 업데이트
-    if bounced_emails:
-        print(f"\nSheets 바운스 업데이트 중...")
+    # Sheets 바운스/답장 업데이트
+    if bounced_emails or replied_emails:
+        print(f"\nSheets 업데이트 중...")
         sheet = get_sheet()
         mark_bounced(sheet, bounced_emails, args.dry_run)
+        mark_replied(sheet, replied_emails, args.dry_run)
 
     # 텔레그램 알림
     if all_real_replies:
