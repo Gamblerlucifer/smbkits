@@ -52,6 +52,16 @@ BOUNCE_SENDERS = [
     "mail+",
 ]
 
+# 바운스 키워드 (본문 기반 - 제목이 원래 발송 메일 제목 그대로인 바운스)
+BOUNCE_BODY = [
+    "주소를 찾을 수 없거나 해당 주소에서 메일을 받을 수 없어",
+    "메일이 전송되지 않았습니다",
+    "주소를 찾을 수 없음",
+    "delivery to the following recipient failed",
+    "couldn't be delivered",
+    "wasn't delivered",
+]
+
 # 자동 답장 키워드
 AUTO_REPLY_SUBJECTS = [
     "automatic reply",
@@ -110,12 +120,14 @@ def decode_str(s):
     return "".join(result)
 
 
-def is_bounce(sender: str, subject: str) -> bool:
+def is_bounce(sender: str, subject: str, body: str) -> bool:
     s = subject.lower()
     f = sender.lower()
+    b = body.lower()
     return (
         any(k in s for k in BOUNCE_SUBJECTS) or
-        any(k in f for k in BOUNCE_SENDERS)
+        any(k in f for k in BOUNCE_SENDERS) or
+        any(k in b for k in BOUNCE_BODY)
     )
 
 
@@ -188,7 +200,7 @@ def check_inbox(account: dict, delete: bool = False) -> dict:
             subject = decode_str(msg.get("Subject", ""))
             body    = get_email_body(msg)
 
-            if is_bounce(sender, subject):
+            if is_bounce(sender, subject, body):
                 recipient = extract_original_recipient(body)
                 results["bounces"].append({
                     "sender":    sender,
