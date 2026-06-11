@@ -66,6 +66,31 @@ async def scrape_one(page, url: str) -> dict:
             review_count = (await el.evaluate("el => el.innerText")).strip()
             if review_count: break
 
+    # 별점 분포 (Filters 모달 → 1~5점 건수, total/critical 정확히 계산)
+    rating_dist = []
+    try:
+        filt_btn = await page.query_selector("button:has-text('Filters')")
+        if filt_btn:
+            await filt_btn.click()
+            await page.wait_for_timeout(1500)
+            texts = await page.evaluate("""() => {
+                const out = [];
+                document.querySelectorAll("button, [role='button']").forEach(el => {
+                    const t = el.innerText.trim();
+                    if (/^\\(\\d+\\)$/.test(t)) out.push(t);
+                });
+                return out;
+            }""")
+            if len(texts) == 5:
+                rating_dist = [int(re.sub(r"[()]", "", t)) for t in texts]
+            await page.keyboard.press("Escape")
+            await page.wait_for_timeout(500)
+    except Exception:
+        pass
+
+    if rating_dist:
+        review_count = str(sum(rating_dist))
+
     # 리뷰 로드
     try:
         await page.wait_for_selector("[data-test-target='reviews-tab']", timeout=12000)
@@ -101,10 +126,13 @@ async def scrape_one(page, url: str) -> dict:
     positives = [r for r in reviews if r["stars"] >= 4]
     negatives = [r for r in reviews if 1 <= r["stars"] <= 3]
 
+    critical_count = sum(rating_dist[:3]) if rating_dist else None
+
     return {
         "name": name.strip(),
         "rating": rating.strip(),
         "review_count": review_count.strip(),
+        "critical_count": critical_count,
         "positives": positives[:3],
         "negatives": negatives[:3],
     }
@@ -192,14 +220,79 @@ def build_html(data: dict, responses: dict) -> str:
     name = data["name"]
     rating = data["rating"]
     count = data["review_count"]
+    critical_count = data.get("critical_count")
 
-    pos_review = data["positives"][0]["text"] if data["positives"] else "N/A"
-    neg_review = data["negatives"][0]["text"] if data["negatives"] else "N/A"
+    pos_review = data["positives"][0]["text"] if data["positives"] else ""
     pos_stars = data["positives"][0]["stars"] if data["positives"] else "-"
-    neg_stars = data["negatives"][0]["stars"] if data["negatives"] else "-"
-
     pos_resp = responses.get("positive_response", "")
+
+    has_neg_sample = bool(data["negatives"])
+    neg_review = data["negatives"][0]["text"] if has_neg_sample else ""
+    neg_stars = data["negatives"][0]["stars"] if has_neg_sample else "-"
     neg_resp = responses.get("negative_response", "")
+
+    # "Recent Critical" 행 — 별점 분포 기반 정확한 표현
+    if critical_count is not None and count:
+        total = int(count) if count.isdigit() else None
+        if critical_count == 0:
+            critical_cell = "None — exceptionally clean record"
+        elif total:
+            pct = round(critical_count / total * 100, 1)
+            critical_cell = f"{critical_count} reviews rated 1-3★ ({pct}% of total)"
+        else:
+            critical_cell = f"{critical_count} reviews rated 1-3★"
+    else:
+        critical_cell = f"{'⭐' * int(neg_stars) if str(neg_stars).isdigit() else ''} ({neg_stars}/5)"
+
+    rows = f"""
+  <tr style="background: #f7f7f7;">
+    <td style="padding: 8px 12px; border: 1px solid #ddd; font-weight: bold;">Rating</td>
+    <td style="padding: 8px 12px; border: 1px solid #ddd;">{rating} / 5</td>
+  </tr>
+  <tr>
+    <td style="padding: 8px 12px; border: 1px solid #ddd; font-weight: bold;">Total Reviews</td>
+    <td style="padding: 8px 12px; border: 1px solid #ddd;">{count}</td>
+  </tr>"""
+    if data["positives"]:
+        rows += f"""
+  <tr style="background: #f7f7f7;">
+    <td style="padding: 8px 12px; border: 1px solid #ddd; font-weight: bold;">Recent Positive</td>
+    <td style="padding: 8px 12px; border: 1px solid #ddd;">{"⭐" * int(pos_stars) if str(pos_stars).isdigit() else ""} ({pos_stars}/5)</td>
+  </tr>"""
+    rows += f"""
+  <tr>
+    <td style="padding: 8px 12px; border: 1px solid #ddd; font-weight: bold;">Critical Reviews</td>
+    <td style="padding: 8px 12px; border: 1px solid #ddd;">{critical_cell}</td>
+  </tr>"""
+
+    # Response Examples 테이블 행
+    examples = ""
+    if data["positives"]:
+        examples += f"""
+    <tr style="background: #f0faf0; vertical-align: top;">
+      <td style="padding: 10px 12px; border: 1px solid #ddd;">
+        <span style="color: #2e7d32; font-weight: bold;">★ Positive ({pos_stars}/5)</span><br><br>
+        <em>"{pos_review[:250]}{"..." if len(pos_review) > 250 else ""}"</em>
+      </td>
+      <td style="padding: 10px 12px; border: 1px solid #ddd;">{pos_resp}</td>
+    </tr>"""
+    if has_neg_sample:
+        examples += f"""
+    <tr style="background: #fff8f0; vertical-align: top;">
+      <td style="padding: 10px 12px; border: 1px solid #ddd;">
+        <span style="color: #c62828; font-weight: bold;">▼ Critical ({neg_stars}/5)</span><br><br>
+        <em>"{neg_review[:250]}{"..." if len(neg_review) > 250 else ""}"</em>
+      </td>
+      <td style="padding: 10px 12px; border: 1px solid #ddd;">{neg_resp}</td>
+    </tr>"""
+
+    note = ""
+    if not has_neg_sample and critical_count:
+        note = f"""
+<p style="margin-top: 16px; font-size: 13px; color: #555;">
+  You have {critical_count} reviews rated 1-3★ — none appeared in the most recent sample above,
+  but happy to pull a specific example and draft a response if useful.
+</p>"""
 
     html = f"""
 <div style="font-family: Georgia, serif; font-size: 14px; line-height: 1.7; color: #222; max-width: 640px;">
@@ -209,23 +302,7 @@ def build_html(data: dict, responses: dict) -> str:
 <h3 style="border-bottom: 1px solid #ccc; padding-bottom: 6px; font-size: 15px;">
   TripAdvisor Snapshot
 </h3>
-<table style="width: 100%; border-collapse: collapse; margin-bottom: 24px; font-size: 13px;">
-  <tr style="background: #f7f7f7;">
-    <td style="padding: 8px 12px; border: 1px solid #ddd; font-weight: bold;">Rating</td>
-    <td style="padding: 8px 12px; border: 1px solid #ddd;">{rating} / 5</td>
-  </tr>
-  <tr>
-    <td style="padding: 8px 12px; border: 1px solid #ddd; font-weight: bold;">Total Reviews</td>
-    <td style="padding: 8px 12px; border: 1px solid #ddd;">{count}</td>
-  </tr>
-  <tr style="background: #f7f7f7;">
-    <td style="padding: 8px 12px; border: 1px solid #ddd; font-weight: bold;">Recent Positive</td>
-    <td style="padding: 8px 12px; border: 1px solid #ddd;">{"⭐" * int(pos_stars) if str(pos_stars).isdigit() else ""} ({pos_stars}/5)</td>
-  </tr>
-  <tr>
-    <td style="padding: 8px 12px; border: 1px solid #ddd; font-weight: bold;">Recent Critical</td>
-    <td style="padding: 8px 12px; border: 1px solid #ddd;">{"⭐" * int(neg_stars) if str(neg_stars).isdigit() else ""} ({neg_stars}/5)</td>
-  </tr>
+<table style="width: 100%; border-collapse: collapse; margin-bottom: 24px; font-size: 13px;">{rows}
 </table>
 
 <h3 style="border-bottom: 1px solid #ccc; padding-bottom: 6px; font-size: 15px;">
@@ -239,24 +316,10 @@ def build_html(data: dict, responses: dict) -> str:
       <th style="padding: 10px 12px; text-align: left; width: 50%;">Suggested Response</th>
     </tr>
   </thead>
-  <tbody>
-    <tr style="background: #f0faf0; vertical-align: top;">
-      <td style="padding: 10px 12px; border: 1px solid #ddd;">
-        <span style="color: #2e7d32; font-weight: bold;">★ Positive ({pos_stars}/5)</span><br><br>
-        <em>"{pos_review[:250]}{"..." if len(pos_review) > 250 else ""}"</em>
-      </td>
-      <td style="padding: 10px 12px; border: 1px solid #ddd;">{pos_resp}</td>
-    </tr>
-    <tr style="background: #fff8f0; vertical-align: top;">
-      <td style="padding: 10px 12px; border: 1px solid #ddd;">
-        <span style="color: #c62828; font-weight: bold;">▼ Critical ({neg_stars}/5)</span><br><br>
-        <em>"{neg_review[:250]}{"..." if len(neg_review) > 250 else ""}"</em>
-      </td>
-      <td style="padding: 10px 12px; border: 1px solid #ddd;">{neg_resp}</td>
-    </tr>
+  <tbody>{examples}
   </tbody>
 </table>
-
+{note}
 <p style="margin-top: 24px; color: #555; font-size: 13px;">
   This is a sample of what SMBkits generates — tailored to your actual reviews,
   in your tone, updated as new reviews come in. Happy to walk you through it if useful.
