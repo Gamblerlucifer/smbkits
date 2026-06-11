@@ -77,6 +77,25 @@ AUTO_REPLY_SUBJECTS = [
     "not in the office",
 ]
 
+# 자동 답장 키워드 (본문 기반 - 제목에 안 나오는 자동 응답/티켓 시스템)
+AUTO_REPLY_BODY = [
+    "your question has been received",
+    "thank you for contacting",
+    "thank you for reaching out",
+    "this is an auto-reply message",
+    "team member will be reaching out",
+    "checked only during",
+    "we will get back to you as soon as",
+    "we are currently unavailable",
+    "thank you for your email",
+]
+
+# 자동 응답/무관한 발신자
+NOISE_SENDERS = [
+    "custhelp.com",
+    "google-noreply@google.com",
+]
+
 
 def decode_str(s):
     if not s:
@@ -100,9 +119,15 @@ def is_bounce(sender: str, subject: str) -> bool:
     )
 
 
-def is_auto_reply(subject: str) -> bool:
+def is_auto_reply(sender: str, subject: str, body: str) -> bool:
     s = subject.lower()
-    return any(k in s for k in AUTO_REPLY_SUBJECTS)
+    f = sender.lower()
+    b = body.lower()
+    return (
+        any(k in s for k in AUTO_REPLY_SUBJECTS) or
+        any(k in f for k in NOISE_SENDERS) or
+        any(k in b for k in AUTO_REPLY_BODY)
+    )
 
 
 def extract_original_recipient(body: str) -> str:
@@ -172,7 +197,7 @@ def check_inbox(account: dict, delete: bool = False) -> dict:
                 })
                 if delete:
                     mail.store(uid, "+FLAGS", "\\Deleted")
-            elif is_auto_reply(subject):
+            elif is_auto_reply(sender, subject, body):
                 results["auto_replies"].append({
                     "sender":  sender,
                     "subject": subject,
