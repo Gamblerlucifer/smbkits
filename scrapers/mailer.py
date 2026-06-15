@@ -107,6 +107,20 @@ SCOPES = [
 
 gemini_client = genai.Client(api_key=GEMINI_API_KEY)
 
+
+def sheet_update(ws, row: int, col: int, val: str, retries: int = 3):
+    """gspread update_cell — TCP 끊김 시 재연결 후 재시도 (Sheets API 무료, 비용 없음)"""
+    for attempt in range(retries):
+        try:
+            ws.update_cell(row, col, val)
+            return
+        except Exception as e:
+            if attempt == retries - 1:
+                raise
+            print(f"  [Sheets 재연결] {e} → {attempt + 1}회 재시도")
+            time.sleep(4)
+
+
 # 캠페인 시작일 — 수정하지 말 것 (주차 자동 계산 기준)
 CAMPAIGN_START = date(2026, 5, 19)
 
@@ -474,7 +488,7 @@ def main():
         # 발송 전 선점 — UTC ISO timestamp으로 stale 2시간 판단
         if not args.dry_run:
             ts_now = datetime.now(timezone.utc).isoformat()
-            sheet.update_cell(i + 2, COL["outreach_status"] + 1, f"sending:{ts_now}")
+            sheet_update(sheet, i + 2, COL["outreach_status"] + 1, f"sending:{ts_now}")
 
         if not args.dry_run:
             success = send_email(account, to_email, content["subject"], content["body"])
@@ -488,7 +502,7 @@ def main():
 
             if not args.dry_run:
                 # 메인 시트 상태 확정
-                sheet.update_cell(i + 2, COL["outreach_status"] + 1, new_status)
+                sheet_update(sheet, i + 2, COL["outreach_status"] + 1, new_status)
                 # Email_Logs 탭에 발송 내용 영구 기록
                 log_row = [
                     datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC"),
@@ -508,7 +522,7 @@ def main():
         else:
             # 발송 실패 시 선점 롤백 → 다음 실행에서 재시도 가능
             if not args.dry_run:
-                sheet.update_cell(i + 2, COL["outreach_status"] + 1, "")
+                sheet_update(sheet, i + 2, COL["outreach_status"] + 1, "")
             print(f"  ❌ 실패 | 상태 롤백")
 
         # 랜덤 딜레이 (인간 행동 모방) — dry-run은 스킵
