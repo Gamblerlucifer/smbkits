@@ -104,6 +104,7 @@ AUTO_REPLY_BODY = [
 NOISE_SENDERS = [
     "custhelp.com",
     "google-noreply@google.com",
+    "email.anthropic.com",
 ]
 
 
