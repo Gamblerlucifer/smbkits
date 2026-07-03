@@ -85,6 +85,9 @@ AUTO_REPLY_SUBJECTS = [
     "will return",
     "back in the office",
     "not in the office",
+    "no longer being monitored",
+    "thanks for your mail",
+    "sit tight",
 ]
 
 # 자동 답장 키워드 (본문 기반 - 제목에 안 나오는 자동 응답/티켓 시스템)
@@ -98,6 +101,8 @@ AUTO_REPLY_BODY = [
     "we will get back to you as soon as",
     "we are currently unavailable",
     "thank you for your email",
+    "this is an auto response",
+    "this email address is no longer being monitored",
 ]
 
 # 자동 응답/무관한 발신자
