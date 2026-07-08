@@ -205,3 +205,95 @@ export async function getRecentOrderResults(
   const raw = await kv.lrange<OrderMarginResult>(key, 0, limit - 1);
   return raw ?? [];
 }
+
+const PLAN_NAME = "Profit Guard";
+const PLAN_PRICE = "5.00";
+const TRIAL_DAYS = 7;
+
+interface RecurringCharge {
+  id: number;
+  status: string;
+  confirmation_url: string;
+}
+
+export async function createRecurringCharge(
+  shop: string,
+  accessToken: string
+): Promise<RecurringCharge> {
+  const isTestMode = process.env.SHOPIFY_BILLING_TEST !== "false";
+
+  const res = await fetch(
+    `https://${shop}/admin/api/2026-07/recurring_application_charges.json`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Shopify-Access-Token": accessToken,
+      },
+      body: JSON.stringify({
+        recurring_application_charge: {
+          name: PLAN_NAME,
+          price: PLAN_PRICE,
+          trial_days: TRIAL_DAYS,
+          return_url: `${process.env.SHOPIFY_APP_URL}/api/shopify/billing/callback?shop=${shop}`,
+          test: isTestMode,
+        },
+      }),
+    }
+  );
+
+  if (!res.ok) {
+    throw new Error(`Failed to create recurring charge: ${res.status} ${await res.text()}`);
+  }
+
+  const data = await res.json();
+  return data.recurring_application_charge as RecurringCharge;
+}
+
+export async function activateRecurringCharge(
+  shop: string,
+  accessToken: string,
+  chargeId: string
+): Promise<RecurringCharge> {
+  const getRes = await fetch(
+    `https://${shop}/admin/api/2026-07/recurring_application_charges/${chargeId}.json`,
+    { headers: { "X-Shopify-Access-Token": accessToken } }
+  );
+
+  if (!getRes.ok) {
+    throw new Error(`Failed to fetch charge: ${getRes.status} ${await getRes.text()}`);
+  }
+
+  const getData = await getRes.json();
+  const charge = getData.recurring_application_charge as RecurringCharge;
+
+  if (charge.status !== "accepted") {
+    return charge;
+  }
+
+  const activateRes = await fetch(
+    `https://${shop}/admin/api/2026-07/recurring_application_charges/${chargeId}/activate.json`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Shopify-Access-Token": accessToken,
+      },
+    }
+  );
+
+  if (!activateRes.ok) {
+    throw new Error(`Failed to activate charge: ${activateRes.status} ${await activateRes.text()}`);
+  }
+
+  const activateData = await activateRes.json();
+  return activateData.recurring_application_charge as RecurringCharge;
+}
+
+export async function storeSubscriptionStatus(shop: string, active: boolean) {
+  await kv.set(`shop:${shop}:subscribed`, active);
+}
+
+export async function isSubscribed(shop: string): Promise<boolean> {
+  return (await kv.get<boolean>(`shop:${shop}:subscribed`)) === true;
+}

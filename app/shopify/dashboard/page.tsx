@@ -1,17 +1,44 @@
+import { redirect } from "next/navigation";
 import CostForm from "./CostForm";
-import { getRecentOrderResults } from "@/lib/shopify";
+import { getRecentOrderResults, isSubscribed } from "@/lib/shopify";
 
 export default async function DashboardPage({
   searchParams,
 }: {
-  searchParams: Promise<{ shop?: string }>;
+  searchParams: Promise<{ shop?: string; billing?: string }>;
 }) {
-  const { shop } = await searchParams;
+  const { shop, billing } = await searchParams;
 
   if (!shop) {
     return (
       <main className="min-h-screen bg-neutral-950 text-neutral-100 flex items-center justify-center px-6">
         <p className="text-neutral-400">Missing shop parameter.</p>
+      </main>
+    );
+  }
+
+  const subscribed = await isSubscribed(shop);
+
+  if (!subscribed && billing !== "declined") {
+    redirect(`/api/shopify/billing?shop=${shop}`);
+  }
+
+  if (!subscribed && billing === "declined") {
+    return (
+      <main className="min-h-screen bg-neutral-950 text-neutral-100 flex items-center justify-center px-6">
+        <div className="max-w-sm text-center">
+          <h1 className="text-2xl font-semibold mb-4">Trial not started</h1>
+          <p className="text-neutral-400 mb-8">
+            You didn&apos;t complete the $5/mo plan approval, so Profit Guard
+            isn&apos;t active on {shop} yet.
+          </p>
+          <a
+            href={`/api/shopify/billing?shop=${shop}`}
+            className="inline-flex items-center justify-center bg-emerald-500 text-neutral-950 font-medium px-8 py-3 rounded-lg hover:bg-emerald-400 transition"
+          >
+            Start free trial
+          </a>
+        </div>
       </main>
     );
   }
