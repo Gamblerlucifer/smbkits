@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import {
   isValidShopDomain,
-  verifyHmac,
+  checkHmac,
   exchangeCodeForToken,
   storeAccessToken,
   registerOrderWebhook,
@@ -26,9 +26,12 @@ export async function GET(request: NextRequest) {
   }
 
   const rawQuery = request.nextUrl.search.replace(/^\?/, "");
-  if (!verifyHmac(rawQuery)) {
+  const hmacCheck = checkHmac(rawQuery);
+  if (!hmacCheck.match) {
+    // TEMPORARY: surfaces the verification internals so we can diagnose a
+    // signature mismatch. Remove this branch once installs succeed.
     return errorPage(
-      "We couldn't verify this request came from Shopify. Please try installing again from your Shopify admin."
+      `DEBUG — raw: ${rawQuery} | message: ${hmacCheck.message} | digest: ${hmacCheck.digest} | received hmac: ${hmacCheck.hmac}`
     );
   }
 

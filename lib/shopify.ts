@@ -43,31 +43,30 @@ export function buildAuthorizeUrl(shop: string, state: string): string {
   return `https://${shop}/admin/oauth/authorize?${params.toString()}`;
 }
 
+export interface HmacCheck {
+  message: string;
+  digest: string;
+  hmac: string;
+  match: boolean;
+}
+
 /**
- * Verifies the OAuth callback HMAC using the raw query string.
- * Must NOT use URLSearchParams here — its form-decoding treats a literal
- * "+" in the query (common in the base64 `host` param) as a space, which
- * corrupts the value Shopify actually signed and makes every check fail.
+ * Verifies the OAuth callback HMAC using the raw, still-percent-encoded
+ * query string. We deliberately do NOT decode the values: Shopify signs
+ * the exact bytes it put on the wire, so sorting the untouched
+ * "key=value" substrings and joining them reproduces that signed message
+ * without any decode/re-encode round-trip that could alter it (e.g. a
+ * literal "+" in the base64 `host` param).
  */
-export function verifyHmac(rawQuery: string): boolean {
-  const pairs = rawQuery
-    .split("&")
-    .filter(Boolean)
-    .map((pair): [string, string] => {
-      const idx = pair.indexOf("=");
-      const key = idx === -1 ? pair : pair.slice(0, idx);
-      const value = idx === -1 ? "" : pair.slice(idx + 1);
-      return [decodeURIComponent(key), decodeURIComponent(value)];
-    });
+export function checkHmac(rawQuery: string): HmacCheck {
+  const rawPairs = rawQuery.split("&").filter(Boolean);
 
-  const hmacPair = pairs.find(([key]) => key === "hmac");
-  if (!hmacPair) return false;
-  const hmac = hmacPair[1];
+  const hmacPair = rawPairs.find((p) => p.startsWith("hmac="));
+  const hmac = hmacPair ? decodeURIComponent(hmacPair.slice("hmac=".length)) : "";
 
-  const message = pairs
-    .filter(([key]) => key !== "hmac" && key !== "signature")
-    .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
-    .map(([key, value]) => `${key}=${value}`)
+  const message = rawPairs
+    .filter((p) => !p.startsWith("hmac=") && !p.startsWith("signature="))
+    .sort()
     .join("&");
 
   const digest = createHmac("sha256", process.env.SHOPIFY_CLIENT_SECRET!)
@@ -76,8 +75,14 @@ export function verifyHmac(rawQuery: string): boolean {
 
   const digestBuf = Buffer.from(digest, "utf8");
   const hmacBuf = Buffer.from(hmac, "utf8");
-  if (digestBuf.length !== hmacBuf.length) return false;
-  return timingSafeEqual(digestBuf, hmacBuf);
+  const match =
+    !!hmac && digestBuf.length === hmacBuf.length && timingSafeEqual(digestBuf, hmacBuf);
+
+  return { message, digest, hmac, match };
+}
+
+export function verifyHmac(rawQuery: string): boolean {
+  return checkHmac(rawQuery).match;
 }
 
 export async function exchangeCodeForToken(
