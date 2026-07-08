@@ -3,8 +3,25 @@ import { kv } from "@vercel/kv";
 
 const SCOPES = "read_orders,read_products";
 
+/**
+ * Trimmed accessor for the app secret — a stray trailing newline or space
+ * from a copy/paste (common when pasting into Vercel's env var UI) would
+ * silently change the HMAC key and make every signature check fail.
+ */
+function clientSecret(): string {
+  return process.env.SHOPIFY_CLIENT_SECRET!.trim();
+}
+
 export function isValidShopDomain(shop: string): boolean {
   return /^[a-zA-Z0-9][a-zA-Z0-9-]*\.myshopify\.com$/.test(shop);
+}
+
+function escapeHtml(input: string): string {
+  return input
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
 }
 
 /**
@@ -22,7 +39,7 @@ export function errorPage(message: string, status = 400): Response {
 <body style="margin:0;background:#0a0a0a;color:#f5f5f5;font-family:system-ui,-apple-system,sans-serif;min-height:100vh;display:flex;align-items:center;justify-content:center;padding:24px;">
   <div style="max-width:420px;text-align:center;">
     <h1 style="font-size:1.5rem;font-weight:600;margin-bottom:12px;">Couldn&#39;t complete that step</h1>
-    <p style="color:#a3a3a3;line-height:1.6;margin-bottom:24px;">${message}</p>
+    <p style="color:#a3a3a3;line-height:1.6;margin-bottom:24px;word-break:break-all;">${escapeHtml(message)}</p>
     <a href="https://smbkits.com/apps/profit-guard" style="display:inline-block;background:#10b981;color:#0a0a0a;font-weight:500;padding:10px 24px;border-radius:8px;text-decoration:none;">Back to Profit Guard</a>
   </div>
 </body>
@@ -69,9 +86,7 @@ export function checkHmac(rawQuery: string): HmacCheck {
     .sort()
     .join("&");
 
-  const digest = createHmac("sha256", process.env.SHOPIFY_CLIENT_SECRET!)
-    .update(message)
-    .digest("hex");
+  const digest = createHmac("sha256", clientSecret()).update(message).digest("hex");
 
   const digestBuf = Buffer.from(digest, "utf8");
   const hmacBuf = Buffer.from(hmac, "utf8");
@@ -94,7 +109,7 @@ export async function exchangeCodeForToken(
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       client_id: process.env.SHOPIFY_CLIENT_ID,
-      client_secret: process.env.SHOPIFY_CLIENT_SECRET,
+      client_secret: clientSecret(),
       code,
     }),
   });
@@ -179,9 +194,7 @@ export async function registerOrderWebhook(shop: string, accessToken: string) {
 export function verifyWebhookHmac(rawBody: string, hmacHeader: string | null): boolean {
   if (!hmacHeader) return false;
 
-  const digest = createHmac("sha256", process.env.SHOPIFY_CLIENT_SECRET!)
-    .update(rawBody, "utf8")
-    .digest("base64");
+  const digest = createHmac("sha256", clientSecret()).update(rawBody, "utf8").digest("base64");
 
   const digestBuf = Buffer.from(digest, "utf8");
   const hmacBuf = Buffer.from(hmacHeader, "utf8");
