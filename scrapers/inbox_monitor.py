@@ -1,0 +1,404 @@
+"""
+SMBkits — Gmail 받은편지함 자동 모니터
+3개 계정 IMAP 체크 → 바운스/자동답장/실제답장 분류
+- 바운스 → Sheets outreach_status = bounced
+- 실제 답장 → 콘솔 출력 + 별도 로그
+
+Usage:
+    python scrapers/inbox_monitor.py
+    python scrapers/inbox_monitor.py --dry-run
+"""
+
+import os, sys, imaplib, email, re, csv, time, argparse, requests
+from email.header import decode_header
+from datetime import datetime, timezone
+import gspread
+from google.oauth2.service_account import Credentials
+from dotenv import load_dotenv
+
+sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+load_dotenv(os.path.join(os.path.dirname(__file__), ".env"), override=True)
+
+SCOPES = [
+    "https://www.googleapis.com/auth/spreadsheets",
+    "https://www.googleapis.com/auth/drive",
+]
+
+ACCOUNTS = [
+    {"name": "James Harrison", "email": "jamessmbkits@gmail.com", "pw": os.getenv("SMTP_JAMES_PW", "").replace(" ", "")},
+    {"name": "Alex Bennett",   "email": "alexsmbkits@gmail.com",  "pw": os.getenv("SMTP_ALEX_PW",  "").replace(" ", "")},
+    {"name": "Sarah Mitchell", "email": "sarahsmbkits@gmail.com", "pw": os.getenv("SMTP_SARAH_PW", "").replace(" ", "")},
+]
+
+# 바운스 키워드 (제목 또는 발신자)
+BOUNCE_SUBJECTS = [
+    "delivery status notification",
+    "mail delivery failed",
+    "mail delivery subsystem",
+    "undeliverable",
+    "delivery failure",
+    "address not found",
+    "주소를 찾을 수 없음",
+    "전송이 완료되지 않음",
+    "전송되지 않았습니다",
+    "mailer-daemon",
+    "postmaster",
+]
+
+BOUNCE_SENDERS = [
+    "mailer-daemon",
+    "postmaster",
+    "mail delivery",
+    "mail+",
+]
+
+# 바운스 키워드 (본문 기반 - 제목이 원래 발송 메일 제목 그대로인 바운스)
+BOUNCE_BODY = [
+    "주소를 찾을 수 없거나 해당 주소에서 메일을 받을 수 없어",
+    "메일이 전송되지 않았습니다",
+    "주소를 찾을 수 없음",
+    "delivery to the following recipient failed",
+    "couldn't be delivered",
+    "wasn't delivered",
+]
+
+# 자동 답장 키워드
+AUTO_REPLY_SUBJECTS = [
+    "automatic reply",
+    "auto reply",
+    "auto-reply",
+    "out of office",
+    "away from",
+    "vacation",
+    "réponse automatique",
+    "자동 응답",
+    "congés",
+    "fermé",
+    "office is closed",
+    "reservations office",
+    "closed now",
+    "spring holidays",
+    "bank holiday",
+    "public holiday",
+    "on leave",
+    "currently unavailable",
+    "will return",
+    "back in the office",
+    "not in the office",
+    "no longer being monitored",
+    "thanks for your mail",
+    "sit tight",
+]
+
+# 자동 답장 키워드 (본문 기반 - 제목에 안 나오는 자동 응답/티켓 시스템)
+AUTO_REPLY_BODY = [
+    "your question has been received",
+    "thank you for contacting",
+    "thank you for reaching out",
+    "this is an auto-reply message",
+    "team member will be reaching out",
+    "checked only during",
+    "we will get back to you as soon as",
+    "we are currently unavailable",
+    "thank you for your email",
+    "this is an auto response",
+    "this email address is no longer being monitored",
+]
+
+# 자동 응답/무관한 발신자
+NOISE_SENDERS = [
+    "custhelp.com",
+    "google-noreply@google.com",
+    "email.anthropic.com",
+]
+
+
+def decode_str(s):
+    if not s:
+        return ""
+    parts = decode_header(s)
+    result = []
+    for part, enc in parts:
+        if isinstance(part, bytes):
+            result.append(part.decode(enc or "utf-8", errors="replace"))
+        else:
+            result.append(str(part))
+    return "".join(result)
+
+
+def is_bounce(sender: str, subject: str, body: str) -> bool:
+    s = subject.lower()
+    f = sender.lower()
+    b = body.lower()
+    return (
+        any(k in s for k in BOUNCE_SUBJECTS) or
+        any(k in f for k in BOUNCE_SENDERS) or
+        any(k in b for k in BOUNCE_BODY)
+    )
+
+
+def is_auto_reply(sender: str, subject: str, body: str) -> bool:
+    s = subject.lower()
+    f = sender.lower()
+    b = body.lower()
+    return (
+        any(k in s for k in AUTO_REPLY_SUBJECTS) or
+        any(k in f for k in NOISE_SENDERS) or
+        any(k in b for k in AUTO_REPLY_BODY)
+    )
+
+
+def extract_original_recipient(body: str) -> str:
+    """바운스 메일 본문에서 원래 수신자 이메일 추출"""
+    patterns = [
+        r'(?:to|recipient|수신자)[:\s]+([a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,})',
+        r'([a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,})',
+    ]
+    for pat in patterns:
+        m = re.search(pat, body, re.IGNORECASE)
+        if m:
+            addr = m.group(1).lower()
+            # SMBkits 자체 주소 제외
+            if "smbkits" not in addr and "gmail.com" not in addr:
+                return addr
+    return ""
+
+
+def get_email_body(msg) -> str:
+    body = ""
+    if msg.is_multipart():
+        for part in msg.walk():
+            ct = part.get_content_type()
+            if ct == "text/plain":
+                try:
+                    body = part.get_payload(decode=True).decode("utf-8", errors="replace")
+                    break
+                except Exception:
+                    pass
+    else:
+        try:
+            body = msg.get_payload(decode=True).decode("utf-8", errors="replace")
+        except Exception:
+            pass
+    return body[:2000]
+
+
+def check_inbox(account: dict, delete: bool = False) -> dict:
+    """IMAP으로 받은편지함 체크 — 오늘 받은 메일 분류 + 옵션으로 바운스/자동답장 삭제"""
+    results = {"bounces": [], "auto_replies": [], "real_replies": []}
+
+    try:
+        mail = imaplib.IMAP4_SSL("imap.gmail.com", 993)
+        mail.login(account["email"], account["pw"])
+        mail.select("INBOX")
+
+        # 미읽음 전체 스캔
+        _, data = mail.search(None, "ALL")
+        ids = data[0].split()
+
+        print(f"  [{account['name']}] {len(ids)}개 메일 확인")
+
+        for uid in ids:
+            _, msg_data = mail.fetch(uid, "(RFC822)")
+            msg = email.message_from_bytes(msg_data[0][1])
+
+            sender  = decode_str(msg.get("From", ""))
+            subject = decode_str(msg.get("Subject", ""))
+            body    = get_email_body(msg)
+
+            if is_bounce(sender, subject, body):
+                recipient = extract_original_recipient(body)
+                results["bounces"].append({
+                    "sender":    sender,
+                    "subject":   subject,
+                    "recipient": recipient,
+                })
+                if delete:
+                    mail.store(uid, "+FLAGS", "\\Deleted")
+            elif is_auto_reply(sender, subject, body):
+                results["auto_replies"].append({
+                    "sender":  sender,
+                    "subject": subject,
+                })
+                if delete:
+                    mail.store(uid, "+FLAGS", "\\Deleted")
+            else:
+                results["real_replies"].append({
+                    "sender":  sender,
+                    "subject": subject,
+                    "preview": body[:300],
+                    "account": account["name"],
+                })
+
+        if delete:
+            mail.expunge()
+            print(f"  [{account['name']}] 바운스/자동답장 삭제 완료")
+
+        mail.logout()
+
+    except Exception as e:
+        print(f"  [{account['name']}] IMAP 오류: {e}")
+
+    return results
+
+
+def send_telegram(text: str):
+    token   = os.getenv("TELEGRAM_TOKEN", "")
+    chat_id = os.getenv("TELEGRAM_CHAT_ID", "")
+    if not token or not chat_id:
+        return
+    try:
+        requests.post(
+            f"https://api.telegram.org/bot{token}/sendMessage",
+            json={"chat_id": chat_id, "text": text, "parse_mode": "HTML"},
+            timeout=10,
+        )
+    except Exception as e:
+        print(f"텔레그램 전송 오류: {e}")
+
+
+def get_sheet():
+    creds = Credentials.from_service_account_file(
+        os.getenv("CREDS_FILE", "scrapers/credentials.json"), scopes=SCOPES
+    )
+    gc = gspread.authorize(creds)
+    return gc.open_by_key(os.getenv("SHEET_ID")).worksheet(os.getenv("SHEET_NAME"))
+
+
+def extract_email_from_sender(sender: str) -> str:
+    """'Name <email@domain.com>' 또는 'email@domain.com' 형식에서 이메일 주소만 추출"""
+    m = re.search(r'([a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,})', sender)
+    return m.group(1).lower() if m else ""
+
+
+def mark_replied(sheet, replied_emails: list[str], dry_run: bool):
+    """실제 답장이 온 리드는 outreach_status = replied 로 표시 → 후속(s/t) 메일 발송 제외"""
+    if not replied_emails:
+        return
+
+    all_rows = sheet.get_all_values()
+    header   = all_rows[0]
+    email_col  = header.index("email")
+    status_col = header.index("outreach_status")
+
+    replied_set = {e.lower().strip() for e in replied_emails if e}
+    updates = []
+
+    for i, row in enumerate(all_rows[1:], start=2):
+        addr = row[email_col].lower().strip() if len(row) > email_col else ""
+        if addr in replied_set:
+            current = row[status_col] if len(row) > status_col else ""
+            if current != "replied":
+                updates.append({"range": f"O{i}", "values": [["replied"]]})
+                print(f"  replied → {addr}")
+
+    if updates and not dry_run:
+        sheet.batch_update(updates)
+        print(f"  Sheets {len(updates)}건 replied 업데이트 완료")
+    elif dry_run:
+        print(f"  [DRY RUN] {len(updates)}건 replied 처리 예정")
+
+
+def mark_bounced(sheet, bounced_emails: list[str], dry_run: bool):
+    """Sheets에서 바운스된 이메일 주소 찾아서 status = bounced 표시"""
+    if not bounced_emails:
+        return
+
+    all_rows = sheet.get_all_values()
+    header   = all_rows[0]
+    email_col  = header.index("email")
+    status_col = header.index("outreach_status")
+
+    bounced_set = {e.lower().strip() for e in bounced_emails if e}
+    updates = []
+
+    for i, row in enumerate(all_rows[1:], start=2):
+        addr = row[email_col].lower().strip() if len(row) > email_col else ""
+        if addr in bounced_set:
+            current = row[status_col] if len(row) > status_col else ""
+            if current != "bounced":
+                updates.append({"range": f"O{i}", "values": [["bounced"]]})
+                print(f"  bounced → {addr}")
+
+    if updates and not dry_run:
+        sheet.batch_update(updates)
+        print(f"  Sheets {len(updates)}건 bounced 업데이트 완료")
+    elif dry_run:
+        print(f"  [DRY RUN] {len(updates)}건 bounced 처리 예정")
+
+
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--dry-run", action="store_true")
+    parser.add_argument("--delete",  action="store_true", help="바운스/자동답장 자동 삭제")
+    args = parser.parse_args()
+
+    print(f"=== SMBkits 받은편지함 모니터 {datetime.now().strftime('%Y-%m-%d %H:%M')} ===\n")
+
+    all_bounces      = []
+    all_auto_replies = []
+    all_real_replies = []
+
+    for account in ACCOUNTS:
+        print(f"[{account['name']}] 체크 중...")
+        res = check_inbox(account, delete=args.delete)
+        all_bounces      += res["bounces"]
+        all_auto_replies += res["auto_replies"]
+        all_real_replies += res["real_replies"]
+        time.sleep(1)
+
+    # 바운스된 원래 수신자 이메일 목록
+    bounced_emails = [b["recipient"] for b in all_bounces if b["recipient"]]
+
+    # 실제 답장이 온 발신자 이메일 목록 → 후속 메일 발송 제외
+    replied_emails = [extract_email_from_sender(r["sender"]) for r in all_real_replies]
+    replied_emails = [e for e in replied_emails if e]
+
+    print(f"\n── 결과 ──────────────────────────────")
+    print(f"바운스:    {len(all_bounces)}건")
+    print(f"자동답장:  {len(all_auto_replies)}건")
+    print(f"실제답장:  {len(all_real_replies)}건")
+
+    if all_bounces:
+        print(f"\n[바운스 목록]")
+        for b in all_bounces:
+            print(f"  → {b['recipient'] or '?'} | {b['subject'][:60]}")
+
+    if all_auto_replies:
+        print(f"\n[자동 답장]")
+        for a in all_auto_replies:
+            print(f"  → {a['sender'][:40]} | {a['subject'][:50]}")
+
+    if all_real_replies:
+        print(f"\n{'='*50}")
+        print(f"★ 실제 답장 {len(all_real_replies)}건 ★")
+        print(f"{'='*50}")
+        for r in all_real_replies:
+            print(f"\n  계정:   {r['account']}")
+            print(f"  발신자: {r['sender']}")
+            print(f"  제목:   {r['subject']}")
+            print(f"  내용:   {r['preview'][:200]}")
+
+    # Sheets 바운스/답장 업데이트
+    if bounced_emails or replied_emails:
+        print(f"\nSheets 업데이트 중...")
+        sheet = get_sheet()
+        mark_bounced(sheet, bounced_emails, args.dry_run)
+        mark_replied(sheet, replied_emails, args.dry_run)
+
+    # 텔레그램 알림
+    if all_real_replies:
+        msg = f"📬 <b>SMBkits 답장 {len(all_real_replies)}건</b>\n\n"
+        for r in all_real_replies:
+            msg += f"▸ <b>{r['account']}</b>\n"
+            msg += f"  발신: {r['sender'][:50]}\n"
+            msg += f"  제목: {r['subject'][:60]}\n\n"
+        send_telegram(msg)
+    elif all_bounces:
+        send_telegram(f"✅ SMBkits 모니터 완료\n바운스 {len(all_bounces)}건 처리, 실제 답장 없음")
+
+    print(f"\n완료.")
+
+
+if __name__ == "__main__":
+    main()
