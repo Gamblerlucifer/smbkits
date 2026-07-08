@@ -33,7 +33,7 @@ const principles = [
   {
     title: "Fair pricing",
     desc:
-      "You pay for the problem being solved, not for a suite of features you'll never open. Most apps start free and scale with a single, transparent monthly fee.",
+      "Every SMBkits app costs about the same as one coffee, once — for a full month of service. No tiers, no per-order fees, no surprise upsells.",
   },
   {
     title: "Built for real problems",

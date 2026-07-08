@@ -103,7 +103,7 @@ const jsonLd = {
       offers: {
         "@type": "Offer",
         priceCurrency: "USD",
-        price: "9",
+        price: "5",
       },
       publisher: {
         "@type": "Organization",
@@ -175,7 +175,9 @@ export default function ProfitGuardPage() {
             >
               Install on Shopify
             </a>
-            <span className="text-xs text-neutral-400">Free to install · from $9/mo</span>
+            <span className="text-xs text-neutral-400">
+              $5/mo — less than a coffee, for the whole month
+            </span>
           </div>
         </div>
 
@@ -304,6 +306,26 @@ export default function ProfitGuardPage() {
           </a>{" "}
           for a sense of how much fees alone can erode a thin-margin order.
         </p>
+      </section>
+
+      {/* PRICING */}
+      <section className="max-w-md mx-auto px-6 pb-24 text-center">
+        <h2 className="text-2xl font-semibold mb-3">Pricing</h2>
+        <p className="text-neutral-400 mb-8 leading-relaxed">
+          One coffee, once — for a full month of order-loss protection.
+        </p>
+        <div className="rounded-2xl border border-emerald-500/30 bg-neutral-900/40 px-8 py-10">
+          <div className="text-5xl font-semibold mb-1">
+            $5<span className="text-lg text-neutral-400 font-normal">/mo</span>
+          </div>
+          <p className="text-sm text-neutral-400 mb-6">7-day free trial · cancel anytime</p>
+          <a
+            href="/api/shopify/install"
+            className="inline-flex items-center justify-center w-full bg-emerald-500 text-neutral-950 font-medium px-8 py-3 rounded-lg hover:bg-emerald-400 transition"
+          >
+            Start free trial
+          </a>
+        </div>
       </section>
 
       {/* FAQ */}
