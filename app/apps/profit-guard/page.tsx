@@ -158,12 +158,12 @@ export default function ProfitGuardPage() {
           <span className="inline-flex items-center gap-2 text-xs font-medium uppercase tracking-widest text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 rounded-full px-4 py-1.5 mb-8">
             Order Loss Prevention for Shopify
           </span>
-          <h1 className="text-4xl sm:text-6xl font-semibold tracking-tight leading-[1.05] mb-6">
-            Detect unprofitable orders
-            <br />
-            <span className="text-emerald-400">before</span> they hurt your business.
+          <h1 className="text-[2rem] leading-snug sm:text-5xl sm:leading-[1.1] lg:text-6xl lg:leading-[1.05] font-semibold tracking-tight mb-6">
+            Detect unprofitable orders{" "}
+            <span className="text-emerald-400">before</span> they hurt your
+            business.
           </h1>
-          <p className="text-lg text-neutral-400 max-w-xl mx-auto mb-10 leading-relaxed">
+          <p className="text-base sm:text-lg text-neutral-400 max-w-xl mx-auto mb-10 leading-relaxed">
             Profit Guard calculates every order&apos;s true profit — product
             cost, shipping, discounts, and payment fees — the moment it comes
             in. Know before you ship, not after you reconcile.
