@@ -4,6 +4,7 @@ import {
   verifyHmac,
   exchangeCodeForToken,
   storeAccessToken,
+  registerOrderWebhook,
 } from "@/lib/shopify";
 
 export async function GET(request: NextRequest) {
@@ -27,6 +28,7 @@ export async function GET(request: NextRequest) {
 
   const accessToken = await exchangeCodeForToken(shop, code);
   await storeAccessToken(shop, accessToken);
+  await registerOrderWebhook(shop, accessToken);
 
   const response = NextResponse.redirect(
     `${process.env.SHOPIFY_APP_URL}/shopify/dashboard?shop=${shop}`

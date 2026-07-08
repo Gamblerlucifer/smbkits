@@ -106,3 +106,102 @@ export async function fetchProducts(
   const data = await res.json();
   return data.products as ShopifyProduct[];
 }
+
+export async function registerOrderWebhook(shop: string, accessToken: string) {
+  const res = await fetch(`https://${shop}/admin/api/2026-07/webhooks.json`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "X-Shopify-Access-Token": accessToken,
+    },
+    body: JSON.stringify({
+      webhook: {
+        topic: "orders/create",
+        address: `${process.env.SHOPIFY_APP_URL}/api/webhooks/orders`,
+        format: "json",
+      },
+    }),
+  });
+
+  if (!res.ok) {
+    throw new Error(`Failed to register order webhook: ${res.status} ${await res.text()}`);
+  }
+}
+
+export function verifyWebhookHmac(rawBody: string, hmacHeader: string | null): boolean {
+  if (!hmacHeader) return false;
+
+  const digest = createHmac("sha256", process.env.SHOPIFY_CLIENT_SECRET!)
+    .update(rawBody, "utf8")
+    .digest("base64");
+
+  const digestBuf = Buffer.from(digest, "utf8");
+  const hmacBuf = Buffer.from(hmacHeader, "utf8");
+  if (digestBuf.length !== hmacBuf.length) return false;
+  return timingSafeEqual(digestBuf, hmacBuf);
+}
+
+export interface ShopifyOrder {
+  id: number;
+  name?: string;
+  order_number?: number;
+  total_price: string;
+  line_items: { product_id: number | null; quantity: number; price: string }[];
+}
+
+export interface OrderMarginResult {
+  orderId: number;
+  orderNumber: string;
+  total: number;
+  cost: number;
+  shippingCost: number;
+  paymentFee: number;
+  margin: number;
+  isLoss: boolean;
+  createdAt: string;
+}
+
+export function computeOrderMargin(
+  order: ShopifyOrder,
+  costConfig: CostConfig
+): OrderMarginResult {
+  const total = parseFloat(order.total_price) || 0;
+
+  const cost = order.line_items.reduce((sum, item) => {
+    const unitCost = costConfig.productCosts[String(item.product_id)] ?? 0;
+    return sum + unitCost * item.quantity;
+  }, 0);
+
+  const shippingCost = costConfig.shippingCost;
+  const paymentFee = (costConfig.feePercent / 100) * total;
+  const margin = Math.round((total - cost - shippingCost - paymentFee) * 100) / 100;
+
+  return {
+    orderId: order.id,
+    orderNumber: order.name ?? String(order.order_number ?? order.id),
+    total,
+    cost,
+    shippingCost,
+    paymentFee,
+    margin,
+    isLoss: margin < 0,
+    createdAt: new Date().toISOString(),
+  };
+}
+
+const ORDER_HISTORY_LIMIT = 200;
+
+export async function recordOrderResult(shop: string, result: OrderMarginResult) {
+  const key = `shop:${shop}:orders`;
+  await kv.lpush(key, result);
+  await kv.ltrim(key, 0, ORDER_HISTORY_LIMIT - 1);
+}
+
+export async function getRecentOrderResults(
+  shop: string,
+  limit = 20
+): Promise<OrderMarginResult[]> {
+  const key = `shop:${shop}:orders`;
+  const raw = await kv.lrange<OrderMarginResult>(key, 0, limit - 1);
+  return raw ?? [];
+}
