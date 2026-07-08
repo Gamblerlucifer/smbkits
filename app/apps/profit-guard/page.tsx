@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import InstallForm from "./InstallForm";
 
 export const metadata: Metadata = {
   title: "Profit Guard — Real-Time Order Profitability for Shopify",
@@ -168,16 +169,11 @@ export default function ProfitGuardPage() {
             cost, shipping, discounts, and payment fees — the moment it comes
             in. Know before you ship, not after you reconcile.
           </p>
-          <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
-            <a
-              href="/api/shopify/install"
-              className="inline-flex items-center justify-center bg-emerald-500 text-neutral-950 font-medium px-8 py-3 rounded-lg hover:bg-emerald-400 transition shadow-[0_0_0_1px_rgba(52,211,153,0.4),0_8px_30px_-8px_rgba(52,211,153,0.5)]"
-            >
-              Install on Shopify
-            </a>
-            <span className="text-xs text-neutral-400">
+          <div className="max-w-md mx-auto">
+            <InstallForm />
+            <p className="text-xs text-neutral-400 mt-3">
               $5/mo — less than a coffee, for the whole month
-            </span>
+            </p>
           </div>
         </div>
 
@@ -321,12 +317,7 @@ export default function ProfitGuardPage() {
             $5<span className="text-lg text-neutral-400 font-normal">/mo</span>
           </div>
           <p className="text-sm text-neutral-400 mb-6">7-day free trial · cancel anytime</p>
-          <a
-            href="/api/shopify/install"
-            className="inline-flex items-center justify-center w-full bg-emerald-500 text-neutral-950 font-medium px-8 py-3 rounded-lg hover:bg-emerald-400 transition"
-          >
-            Start free trial
-          </a>
+          <InstallForm buttonLabel="Start free trial" fullWidth />
         </div>
       </section>
 
@@ -359,12 +350,9 @@ export default function ProfitGuardPage() {
         <p className="text-neutral-400 mb-8">
           Install Profit Guard and see today&apos;s order margins immediately.
         </p>
-        <a
-          href="/api/shopify/install"
-          className="inline-flex items-center justify-center bg-emerald-500 text-neutral-950 font-medium px-8 py-3 rounded-lg hover:bg-emerald-400 transition"
-        >
-          Install on Shopify
-        </a>
+        <div className="max-w-md mx-auto">
+          <InstallForm />
+        </div>
       </section>
 
       <footer className="border-t border-neutral-800 px-8 py-6 text-center text-sm text-neutral-400">
