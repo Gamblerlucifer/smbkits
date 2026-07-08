@@ -17,7 +17,8 @@ export default async function DashboardPage({
     );
   }
 
-  const subscribed = await isSubscribed(shop);
+  const skipBilling = process.env.SHOPIFY_SKIP_BILLING === "true";
+  const subscribed = skipBilling || (await isSubscribed(shop));
 
   if (!subscribed && billing !== "declined") {
     redirect(`/api/shopify/billing?shop=${shop}`);
