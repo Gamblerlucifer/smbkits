@@ -7,14 +7,41 @@ export const metadata: Metadata = {
     template: "%s | SMBkits",
   },
   description:
-    "SMBkits builds narrow, focused Shopify apps that solve one real operational problem each — starting with Profit Guard, real-time order profitability checking.",
+    "SMBkits builds narrow, focused Shopify apps that solve one real operational problem each — starting with Profit Guard, a real-time order profitability checker.",
   applicationName: "SMBkits",
   generator: "Next.js",
   category: "Business",
   metadataBase: new URL("https://smbkits.com"),
+  keywords: [
+    "shopify profit calculator",
+    "shopify order profitability app",
+    "shopify margin tracker",
+    "shopify profit margin app",
+    "shopify apps for merchants",
+    "shopify unprofitable orders alert",
+  ],
+  alternates: {
+    canonical: "https://smbkits.com",
+  },
   robots: {
     index: true,
     follow: true,
+    googleBot: { index: true, follow: true, "max-image-preview": "large" },
+  },
+  openGraph: {
+    siteName: "SMBkits",
+    title: "SMBkits — Small, Focused Tools for Shopify Merchants",
+    description:
+      "Narrow, focused Shopify apps that solve one real operational problem each.",
+    type: "website",
+    url: "https://smbkits.com",
+    locale: "en_US",
+  },
+  twitter: {
+    card: "summary",
+    title: "SMBkits — Small, Focused Tools for Shopify Merchants",
+    description:
+      "Narrow, focused Shopify apps that solve one real operational problem each.",
   },
   icons: {
     icon: "/favicon.ico",
