@@ -163,7 +163,7 @@ export default function ProfitGuardPage() {
             <span className="text-emerald-400">before</span> they hurt your
             business.
           </h1>
-          <p className="text-base sm:text-lg text-neutral-400 max-w-xl mx-auto mb-10 leading-relaxed">
+          <p className="text-base sm:text-lg text-neutral-400 max-w-xl mx-auto mb-10 leading-relaxed text-left">
             Profit Guard calculates every order&apos;s true profit — product
             cost, shipping, discounts, and payment fees — the moment it comes
             in. Know before you ship, not after you reconcile.
@@ -244,7 +244,7 @@ export default function ProfitGuardPage() {
         <h2 className="text-2xl font-semibold mb-4 text-center">
           Profit Guard vs. traditional profit trackers
         </h2>
-        <p className="text-neutral-400 text-center max-w-xl mx-auto mb-10 leading-relaxed">
+        <p className="text-neutral-400 text-left max-w-xl mx-auto mb-10 leading-relaxed">
           Apps like BeProfit, Lifetimely, and TrueProfit are built for
           after-the-sale reporting — dashboards you check at the end of the
           week or month. Profit Guard is built for the moment an order is
@@ -293,7 +293,7 @@ export default function ProfitGuardPage() {
             </tbody>
           </table>
         </div>
-        <p className="text-xs text-neutral-500 mt-4 text-center">
+        <p className="text-xs text-neutral-500 mt-4 text-left">
           Hidden costs — shipping, discounts, and payment processing fees —
           are a common source of order-level losses. See Shopify&apos;s own{" "}
           <a
@@ -312,7 +312,9 @@ export default function ProfitGuardPage() {
       <section className="max-w-md mx-auto px-6 pb-24 text-center">
         <h2 className="text-2xl font-semibold mb-3">Pricing</h2>
         <p className="text-neutral-400 mb-8 leading-relaxed">
-          One coffee, once — for a full month of order-loss protection.
+          One coffee, once a month.
+          <br />
+          That&apos;s what it costs to protect your business.
         </p>
         <div className="rounded-2xl border border-emerald-500/30 bg-neutral-900/40 px-8 py-10">
           <div className="text-5xl font-semibold mb-1">

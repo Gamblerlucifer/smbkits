@@ -118,7 +118,7 @@ export default function Home() {
             <br />
             No bloat.
           </h1>
-          <p className="text-base sm:text-lg text-neutral-400 max-w-xl mx-auto leading-relaxed">
+          <p className="text-base sm:text-lg text-neutral-400 max-w-xl mx-auto leading-relaxed text-left">
             We build narrow Shopify apps that solve one real operational
             problem — not another all-in-one dashboard. Each app does one job
             merchants actually pay to have solved.
@@ -180,7 +180,7 @@ export default function Home() {
         <h2 className="text-2xl sm:text-3xl font-semibold text-center mb-6">
           Why we build narrow apps
         </h2>
-        <p className="text-neutral-400 text-center max-w-xl mx-auto mb-14 leading-relaxed">
+        <p className="text-neutral-400 text-left max-w-xl mx-auto mb-14 leading-relaxed">
           Most Shopify tooling bundles unrelated features into one
           subscription — analytics, marketing, chat, upsells, reports —
           hoping something in the bundle sticks. Merchants end up paying for
@@ -204,7 +204,7 @@ export default function Home() {
         <h2 className="text-2xl sm:text-3xl font-semibold text-center mb-6">
           Who SMBkits is for
         </h2>
-        <p className="text-neutral-400 text-center max-w-xl mx-auto leading-relaxed mb-6">
+        <p className="text-neutral-400 text-left max-w-xl mx-auto leading-relaxed mb-6">
           SMBkits apps are built for merchants running a Shopify store on
           their own, or with a small team — the kind of business where the
           owner is still involved in day-to-day margins, shipping decisions,
@@ -212,7 +212,7 @@ export default function Home() {
           else prepared. If you've ever discovered a problem in your store's
           numbers weeks after it started, that's the gap we're building for.
         </p>
-        <p className="text-neutral-400 text-center max-w-xl mx-auto leading-relaxed">
+        <p className="text-neutral-400 text-left max-w-xl mx-auto leading-relaxed">
           We&apos;re not trying to be the last app you&apos;ll ever need to
           install. We&apos;d rather be the one app in a specific category
           that you never think about uninstalling, because it quietly keeps
