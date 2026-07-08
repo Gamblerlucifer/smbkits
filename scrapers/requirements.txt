@@ -1,8 +1,0 @@
-playwright
-gspread
-google-auth
-google-genai
-python-dotenv
-requests[socks]
-httpx
-stem

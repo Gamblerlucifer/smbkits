@@ -47,3 +47,6 @@ scrapers/__pycache__/
 scrapers/enrich.log
 scrapers/michelin_debug.py
 *.pyc
+
+# legacy (old cold-email site, kept locally only — not part of the Shopify app repo)
+/legacy/
