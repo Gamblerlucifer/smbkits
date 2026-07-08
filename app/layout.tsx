@@ -3,12 +3,12 @@ import "./globals.css";
 
 export const metadata: Metadata = {
   title: {
-    default: "SMBkits Profit Guard — Real-Time Order Profitability for Shopify",
-    template: "%s | SMBkits Profit Guard",
+    default: "SMBkits — Small, Focused Tools for Shopify Merchants",
+    template: "%s | SMBkits",
   },
   description:
-    "Catch unprofitable orders before they ship. SMBkits Profit Guard checks every Shopify order's margin in real time — costs, shipping, and fees included.",
-  applicationName: "SMBkits Profit Guard",
+    "SMBkits builds narrow, focused Shopify apps that solve one real operational problem each — starting with Profit Guard, real-time order profitability checking.",
+  applicationName: "SMBkits",
   generator: "Next.js",
   category: "Business",
   metadataBase: new URL("https://smbkits.com"),

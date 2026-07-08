@@ -50,3 +50,9 @@ scrapers/michelin_debug.py
 
 # legacy (old cold-email site, kept locally only — not part of the Shopify app repo)
 /legacy/
+
+# internal strategy reports, kept locally only
+/reports/
+
+# Claude Code worktree scratch dirs
+/.claude/worktrees/
