@@ -5,6 +5,7 @@ import {
   exchangeCodeForToken,
   storeAccessToken,
   registerOrderWebhook,
+  errorPage,
 } from "@/lib/shopify";
 
 export async function GET(request: NextRequest) {
@@ -15,15 +16,20 @@ export async function GET(request: NextRequest) {
   const cookieState = request.cookies.get("shopify_oauth_state")?.value;
 
   if (!shop || !isValidShopDomain(shop) || !code) {
-    return NextResponse.json({ error: "Invalid callback params" }, { status: 400 });
+    return errorPage("This installation link looks incomplete. Please try installing again.");
   }
 
   if (!state || !cookieState || state !== cookieState) {
-    return NextResponse.json({ error: "State mismatch (possible CSRF)" }, { status: 403 });
+    return errorPage(
+      "Your installation session expired or was started from a different browser. Please try installing again."
+    );
   }
 
-  if (!verifyHmac(searchParams)) {
-    return NextResponse.json({ error: "Invalid HMAC signature" }, { status: 403 });
+  const rawQuery = request.nextUrl.search.replace(/^\?/, "");
+  if (!verifyHmac(rawQuery)) {
+    return errorPage(
+      "We couldn't verify this request came from Shopify. Please try installing again from your Shopify admin."
+    );
   }
 
   const accessToken = await exchangeCodeForToken(shop, code);

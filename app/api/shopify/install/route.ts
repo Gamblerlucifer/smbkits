@@ -1,14 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { randomBytes } from "crypto";
-import { isValidShopDomain, buildAuthorizeUrl } from "@/lib/shopify";
+import { isValidShopDomain, buildAuthorizeUrl, errorPage } from "@/lib/shopify";
 
 export async function GET(request: NextRequest) {
   const shop = request.nextUrl.searchParams.get("shop");
 
   if (!shop || !isValidShopDomain(shop)) {
-    return NextResponse.json(
-      { error: "Missing or invalid shop parameter" },
-      { status: 400 }
+    return errorPage(
+      "This install link is missing your store's address. Please install Profit Guard from the Shopify App Store instead of using this link directly."
     );
   }
 
